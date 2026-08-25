@@ -105,3 +105,12 @@ clearly, don't silently guess) without adding a redundant provider.
 User specified that GitHub account explicitly; the machine had a different account active by
 default, so this had to be switched deliberately to avoid creating the repo under the wrong
 identity.
+
+**2026-08-25 — Dropped Regrid entirely; owner-name fallback now goes to Parallel.ai like every other field.**
+Discovered while researching per-query cost that Regrid's self-serve API is a $500–$2,000/mo
+subscription, not pay-per-call — a bad trade for a fallback that only fires occasionally for
+one field RentCast usually already has. Removing it also restores a fully uniform fallback
+rule (every field: primary → Parallel.ai, no exceptions), which is simpler than what it
+replaces. No accuracy floor was assumed to be crossed by this — if QA (Ticket 8) shows owner
+lookups are unreliable via Parallel.ai, revisit then with real hit-rate data instead of
+pre-paying for Regrid speculatively.

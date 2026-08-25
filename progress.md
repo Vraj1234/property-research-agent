@@ -37,11 +37,11 @@ Living tracker. Update checkboxes and Notes as work happens. See `PRD.md` for fu
 - [ ] Schema mapping + null handling tested against live responses
 - Notes:
 
-## Ticket 4 — Fallback & enrichment layer
-- [ ] `getOwnerFallback()` — Regrid, owner name only, called when RentCast owner is null
-- [ ] `webResearchFallback()` — Parallel.ai, one reusable function:
-  - [ ] null-fill mode (mortgagee, HVAC, any other null field)
-  - [ ] recency-triggered bed/bath/sqft cross-check (last sale/listing < ~2 yrs)
+## Ticket 4 — Fallback & enrichment layer (Parallel.ai only — Regrid dropped, see decisions.md)
+- [ ] `webResearchFallback()` — Parallel.ai, one reusable function covering every field:
+  - [ ] null-fill mode (owner name, mortgagee, HVAC, any other null field) — use `core`
+        processor tier for owner/mortgagee (harder lookups), `base` for HVAC
+  - [ ] recency-triggered bed/bath/sqft cross-check (last sale/listing < ~2 yrs) — `base` tier
 - Notes:
 
 ## Ticket 5 — Fire station & hydrant distance tools

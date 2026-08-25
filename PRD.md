@@ -63,25 +63,26 @@ pass before that expansion — tracked in the v2 backlog (§10), not required fo
 | Bed/bath count | RentCast Property Data API | Parallel.ai (null-fill), + Parallel.ai portal cross-check if property sold/listed in last ~2 yrs | "# rooms" interpreted as bed/bath count — **open question, confirm with stakeholder before/at MVP demo**. Cross-check trigger uses recency-of-sale as the "might be stale" signal (see §6), not a second structured provider |
 | Square footage | RentCast | Parallel.ai (null-fill + recency-triggered cross-check, same rule as above) | Assessor-sourced sqft can be stale for renovated homes — see §6 "Portal cross-check" |
 | Year built | RentCast | Parallel.ai (null-fill only) | Doesn't change post-construction, so no cross-check needed |
-| Owner name(s) | RentCast owner-of-record | Regrid ownership (structured 2nd opinion), then Parallel.ai as last resort | Regrid's only job in this system is this one field — it's a parcel/ownership database, genuinely better suited to this than a general web search |
+| Owner name(s) | RentCast owner-of-record | Parallel.ai Task API | Regrid was considered here but dropped — its self-serve API is a $500–$2,000/mo subscription, not pay-per-call, which is a bad fit for an occasional single-field fallback (see decisions.md) |
 | Mortgagee / lender | RentCast (if populated) | Parallel.ai Task API (best-effort web research) | Weakest-coverage field at this budget tier. If accuracy here matters more than expected, upgrade path is ATTOM Data (see §10) |
 | Heating / cooling type | RentCast structure data | Parallel.ai Task API | Most likely field to need the AI-research fallback — structured providers populate this inconsistently |
 | Property tax amount | RentCast tax assessment | Parallel.ai (null-fill) | Dropped Regrid as a fallback here — RentCast coverage is already solid for tax, a second structured provider added cost without meaningfully improving hit rate |
 | Distance to nearest fire station | HIFLD national fire station dataset (free, DHS/CISA, ~53k stations) + haversine calc from geocoded point | — | Static dataset, reliable, no live API dependency |
 | Distance to nearest fire hydrant | OpenStreetMap Overpass API (`emergency=fire_hydrant`, `around:` radius query) | — | Crowdsourced — coverage gaps in rural/under-mapped areas are a known limitation, not a bug to fix |
 
-**One fallback rule, not per-field bespoke logic:** every field above follows the same pattern
-— call the primary source, and if it comes back null, call Parallel.ai. Owner name is the one
-exception (gets a structured second opinion from Regrid first, since a parcel database beats
-a web search for this specific fact). This uniformity is deliberate: one reusable
-"try primary, then Parallel.ai" function handles most of the matrix instead of a different
-fallback chain per field, which is less code and fewer places for a bug to hide.
+**One fallback rule for every field, no exceptions:** call the primary source (RentCast), and
+if it comes back null, call Parallel.ai. This is now uniform across all nine fields — Regrid
+was the one planned exception (a structured second opinion for owner name) but got cut once
+its pricing turned out to be a $500–$2,000/mo subscription rather than pay-per-call, a bad
+trade for a rare single-field fallback in a low-volume tool. One reusable
+"try primary, then Parallel.ai" function now handles the entire matrix — less code, fewer
+places for a bug to hide, and no fixed cost tied to a rarely-used path.
 
 **Zillow/Redfin/Realtor.com are not scraped directly — accessed only indirectly via Parallel.ai, and only for physical-characteristic cross-checks.** All three prohibit automated access
 in their Terms of Use, and Zillow's only official API (Bridge Interactive) requires MLS
 affiliation. Rather than build a scraper against that risk, we use Parallel.ai's own
 web-research infrastructure (their product, their ToS relationship with the destination site)
-as a targeted second opinion when RentCast/Regrid's bed/bath/sqft numbers look stale.
+as a targeted second opinion when RentCast's bed/bath/sqft numbers look stale.
 
 *Why a cross-check is worth having at all:* RentCast is ultimately built on county assessor +
 deed records, and [assessor square footage/room counts are logged from permit filings, not
@@ -131,8 +132,7 @@ Next.js API route  /api/research
    2. Deterministic orchestrator (plain TypeScript, no LLM in the loop)
    │
    ├─ geocodeAddress()        → US Census Geocoder
-   ├─ getPropertyRecord()     → RentCast Property Data API (primary for 7 of 9 fields)
-   ├─ getOwnerFallback()      → Regrid Parcel API (owner name only, if RentCast is null)
+   ├─ getPropertyRecord()     → RentCast Property Data API (primary for all 7 non-geo fields)
    ├─ nearestFireStation()    → HIFLD static dataset (bundled/cached) + haversine
    ├─ nearestFireHydrant()    → OpenStreetMap Overpass API
    └─ webResearchFallback()   → Parallel.ai Task API — one reusable function, called for
@@ -165,7 +165,6 @@ sent to or readable from the browser.
 |---|---|---|
 | `OPENAI_API_KEY` | Agent orchestration | |
 | `RENTCAST_API_KEY` | Property records | Free tier: 50 calls/mo |
-| `REGRID_API_TOKEN` | Owner-name fallback only | Narrowed scope — see §5/§6 |
 | `PARALLEL_API_KEY` | Gap-filling web research | Only called when structured data is missing — keep usage low by design |
 
 No key needed for: US Census Geocoder, HIFLD dataset (static download, bundle/cache locally),
