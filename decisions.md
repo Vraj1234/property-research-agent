@@ -275,3 +275,27 @@ A tooling limitation encountered live, not a code issue — didn't spend further
 since the desktop flow was thoroughly verified through multiple real end-to-end runs. Worth a
 quick manual check (resize an actual browser window, toggle OS light mode) before considering
 the UI fully polished.
+
+**2026-08-27 — Ticket 8 QA: the 80% field-population target is not achievable from this network right now, but that's an external outage, not a pipeline defect — isolating the fields actually reachable shows the pipeline exceeding target.**
+Ran 5 real addresses across 5 states through the live endpoint (see qa-report.md). All 5 hit
+the identical Overpass connectivity failure from the entries above, capping every result at 7/9
+fields regardless of RentCast/Parallel.ai quality — 66.7% overall (30/45), below target.
+Excluding the 2 externally-blocked fields, the 7 RentCast/Parallel.ai-controlled fields scored
+30/35 = 85.7%, above the PRD §8 target. Reporting both numbers rather than picking the
+flattering one: 66.7% is the honest current state of the deployed system, 85.7% is the honest
+attribution of *why* — two different, both-true facts, not a discrepancy to paper over. One
+final gentle Overpass check at the end of this ticket still failed (`ETIMEDOUT`), confirming
+the block hasn't lapsed yet. Mortgagee null-filled successfully in only 1/5 (Willis Tower) —
+small sample, but directionally matches the original "hardest field" assumption;
+discussion.md's hit-rate caveat updated with this real data point rather than left as a pure
+pre-launch estimate.
+
+**2026-08-27 — Ticket 8's "final deploy" and "spot-check distances on a map" items are left genuinely open, not silently marked done.**
+The live Vercel deployment sits behind the team's own auth wall with no URL recorded in this
+repo (decisions.md, 2026-08-25) — there's no way to check it from here without the user's own
+access, so it wasn't checked, only the local build/bundle were (clean: no secret leaks, no
+`NEXT_PUBLIC_*` vars anywhere in the codebase). The distance-map spot-check has zero real data
+to check against, since every distance lookup this round hit the Overpass outage above. Both
+are flagged as explicit follow-ups for whoever picks this up next, once Overpass access
+recovers and the user has confirmed the Vercel dashboard directly — closing the ticket reflects
+"everything checkable from this side was checked," not "everything is verified green."

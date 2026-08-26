@@ -138,8 +138,12 @@ that line for a while.
 ## 4. Caveats
 
 - Parallel.ai hit-rate assumptions (90% mortgagee, 15% owner, 50% HVAC, 20% cross-check) are
-  estimates from the research phase, not measured data. Update this doc once Ticket 8 QA
-  produces real numbers against actual addresses.
+  estimates from the research phase, not measured data. **Ticket 8 QA update (2026-08-27,
+  n=5 addresses, `base` tier throughout):** mortgagee null-filled successfully in 1/5 (20%) —
+  directionally consistent with "hardest field," though the small sample can't confirm the
+  original 90%-miss-rate estimate precisely. Owner and HVAC null-fills succeeded whenever
+  RentCast didn't already have them, no misses observed at n=5 — too small a sample to update
+  those two estimates with confidence either way. See qa-report.md for the full run.
 - Processor tier choices (`core` for owner/mortgagee, `base` for HVAC/cross-check) are a
   starting recommendation balancing cost against accuracy on the harder lookups — revisit if
   QA shows `base` is sufficient for owner/mortgagee too, or `core` is needed elsewhere.
