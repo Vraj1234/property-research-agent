@@ -19,11 +19,14 @@ Living tracker. Update checkboxes and Notes as work happens. See `PRD.md` for fu
 - [ ] Stakeholder sign-off on "# rooms" = bed/bath vs total rooms (still open)
 - Notes:
 
-## Ticket 1 — Repo & project scaffold + deploy pipeline
-- [ ] Next.js + TypeScript app scaffolded
-- [ ] `.env.example`, README with setup instructions
-- [ ] Vercel project connected, deploys on push to `main`
-- Notes:
+## Ticket 1 — Repo & project scaffold + deploy pipeline ✅ CLOSED 2026-08-25
+- [x] Next.js + TypeScript app scaffolded
+- [x] `.env.example`, README with setup instructions
+- [x] Vercel project connected, deploys on push to `main`
+- Notes: Deployment sits behind Vercel's default Team auth wall — not a bug, actually
+  matches the PRD's internal/single-user scope decision. URL cosmetics (team slug in the
+  domain) deliberately left alone for now, revisit with a custom domain if this ever needs
+  to look presentable to someone other than us — see decisions.md.
 
 ## Ticket 2 — Core pipeline skeleton
 - [ ] Shared types for the per-field result contract (`{ field, value, source, confidence }`)

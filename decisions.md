@@ -106,6 +106,12 @@ User specified that GitHub account explicitly; the machine had a different accou
 default, so this had to be switched deliberately to avoid creating the repo under the wrong
 identity.
 
+**2026-08-25 — Left the Vercel deployment URL as-is (includes the `asp-capria` team slug) rather than fixing it now.**
+Cosmetic-only issue, fixable later via a custom domain or project transfer; not worth spending
+time on before Tickets 2-8 are built. Also noted: the deployment sits behind Vercel's default
+Team authentication wall, which happens to align with the PRD's internal/single-user scope —
+convenient, not intentional, but no reason to remove it.
+
 **2026-08-25 — Dropped Regrid entirely; owner-name fallback now goes to Parallel.ai like every other field.**
 Discovered while researching per-query cost that Regrid's self-serve API is a $500–$2,000/mo
 subscription, not pay-per-call — a bad trade for a fallback that only fires occasionally for
