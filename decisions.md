@@ -120,3 +120,24 @@ rule (every field: primary → Parallel.ai, no exceptions), which is simpler tha
 replaces. No accuracy floor was assumed to be crossed by this — if QA (Ticket 8) shows owner
 lookups are unreliable via Parallel.ai, revisit then with real hit-rate data instead of
 pre-paying for Regrid speculatively.
+
+**2026-08-26 — RentCast's Property Records endpoint never returns mortgage/lender data at all; mortgagee excluded from `RentCastPropertyRecord` entirely rather than mapped as an always-null field.**
+Confirmed against RentCast's own docs and the returned schema while building Ticket 3 — there's
+no field for it, not even an empty one. Mortgagee stays out of `researchAddress`'s `fields`
+array until Ticket 4 actually attempts it via Parallel.ai, consistent with the same rule applied
+to fire station/hydrant distance (§ below) — a field only appears once some provider has
+actually been tried for it.
+
+**2026-08-26 — RentCast "no property record for this address" is treated as a normal, honest null, not an error — including on live-verified edge cases it left previously undocumented (HTTP 404 for a valid, geocodable address with no property data, alongside the documented HTTP 400 for an unparseable one and an empty-array HTTP 200).**
+Live testing during Ticket 3 (350 Fifth Avenue, a real commercial building) surfaced the 404
+case, which the public docs don't mention at all. Treating it as a failure would have
+mislabeled a legitimate data gap as an upstream error and produced a misleading "lookup failed"
+note instead of an honest "not found" — caught only by testing against live responses per the
+ticket's own acceptance bar, not by reading docs alone.
+
+**2026-08-26 — A RentCast failure degrades the response to honest not-found fields instead of failing the whole `/api/research` request.**
+Geocoding already succeeded by the time RentCast is called; per PRD.md §8 ("no compromise on
+UX," fail loudly and clearly but don't silently guess), a downstream provider outage shouldn't
+turn a good geocode into a 500 for the whole request. The orchestrator catches RentCastError,
+logs the real cause server-side, and marks the affected fields null with an explanatory note —
+same shape as a genuine "no record found," just a different note.

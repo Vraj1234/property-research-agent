@@ -28,17 +28,26 @@ Living tracker. Update checkboxes and Notes as work happens. See `PRD.md` for fu
   domain) deliberately left alone for now, revisit with a custom domain if this ever needs
   to look presentable to someone other than us — see decisions.md.
 
-## Ticket 2 — Core pipeline skeleton
-- [ ] Shared types for the per-field result contract (`{ field, value, source, confidence }`)
-- [ ] `geocodeAddress()` — US Census Geocoder, hard-fail with clear error on miss
-- [ ] `/api/research` route wired to an orchestrator stub (no providers yet, just plumbing)
-- Notes:
+## Ticket 2 — Core pipeline skeleton ✅ CLOSED 2026-08-26
+- [x] Shared types for the per-field result contract (`{ field, value, source, confidence }`)
+- [x] `geocodeAddress()` — US Census Geocoder, hard-fail with clear error on miss
+- [x] `/api/research` route wired to an orchestrator stub (no providers yet, just plumbing)
+- Notes: 4 unit tests on the geocoder (match, no-match, upstream HTTP error, network failure),
+  `npm run build` clean. Verified end-to-end against the live Census API: valid address returns
+  `200` with real lat/lon, garbage address returns `422 NO_MATCH`.
 
-## Ticket 3 — RentCast integration
-- [ ] `getPropertyRecord()` — bed/bath, sqft, year built, tax, HVAC when present, last
+## Ticket 3 — RentCast integration ✅ CLOSED 2026-08-26
+- [x] `getPropertyRecord()` — bed/bath, sqft, year built, tax, HVAC when present, last
       sale/listing date (needed for the recency-triggered cross-check in Ticket 4)
-- [ ] Schema mapping + null handling tested against live responses
-- Notes:
+- [x] Schema mapping + null handling tested against live responses
+- Notes: Mortgagee excluded — RentCast's Property Records endpoint never returns it at all
+  (confirmed against live responses and docs), so it stays out of `fields` until Ticket 4
+  sources it via Parallel.ai. Orchestrator wired: RentCast success → high/medium-confidence
+  fields; no record (HTTP 400, 404, or empty-array 200 — all three confirmed live, only 400
+  is documented) → honest null fields with a note; RentCast failure (5xx, network, bad key) →
+  same honest-null shape with a different note, request still returns 200 since geocoding
+  already succeeded. 13 new unit tests (7 RentCast, 6 orchestrator); `npm run build` clean;
+  verified end-to-end against 3 live addresses (data-rich record, sparse record, no-record).
 
 ## Ticket 4 — Fallback & enrichment layer (Parallel.ai only — Regrid dropped, see decisions.md)
 - [ ] `webResearchFallback()` — Parallel.ai, one reusable function covering every field:

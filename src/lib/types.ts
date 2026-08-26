@@ -18,6 +18,17 @@ export type PropertyFieldKey =
 export type Confidence = "high" | "medium" | "low";
 
 /**
+ * Value shape for the `bedBathCount` field. Kept as two independently
+ * nullable numbers rather than a single combined count — a provider can
+ * know one and not the other, and collapsing that into one value would
+ * hide a partial result behind a false-confident single number.
+ */
+export interface BedBathCount {
+  bedrooms: number | null;
+  bathrooms: number | null;
+}
+
+/**
  * The result for a single field. `value` and `source` are both `null` when no
  * provider (primary or fallback) could find the field — this must be surfaced
  * honestly to the user, never silently omitted or fabricated (PRD.md §8).
