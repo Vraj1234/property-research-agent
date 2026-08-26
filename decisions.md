@@ -222,3 +222,38 @@ default header combination as bot-like, not any single header. `queryNearbyNodes
 conventional values for all five explicitly. Also hit Overpass's fair-use rate limiting
 firsthand from the volume of debugging requests this took (all round-robin mirror IPs started
 timing out) — a live demonstration of the exact risk PRD.md §9 already flags, not a new one.
+
+**2026-08-27 — `gpt-4o-mini` (the model discussion.md's cost model was built around) has been deprecated by OpenAI; switched to `gpt-5-nano` for the Ticket 6 address-parsing step.**
+Discovered while starting Ticket 6 — multiple current pricing sources list gpt-4o-mini among
+deprecated models as of 2026, succeeded by the GPT-5 line. `gpt-5-nano` is the cheapest actively
+supported model ($0.05/$0.40 per 1M tokens) and more than sufficient for a narrow, well-bounded
+extraction task (pull one US address out of a short chat message) — live-tested it directly
+against the real API for both the found and not-found cases before wiring it in; both worked
+correctly on the first try, including a plausible auto-correction (added "NW" and the ZIP that
+weren't in the raw input). Used the Responses API (`client.responses.create` with
+`text.format: { type: "json_schema", strict: true }`), OpenAI's current recommended approach
+over the older Chat Completions `response_format` pattern discussion.md's cost model assumed.
+
+**2026-08-27 — Chat UI style direction: "Property Dossier" — warm paper background, deep ledger green + rust accents, Fraunces (display serif) + Geist Sans (body) + Geist Mono (data values), result card styled as a case-file/index-card rather than a rounded chat bubble.**
+Deliberate reaction against generic AI-chat template aesthetics (centered hero, purple gradient,
+rounded bubbles) per the user's global design-quality rules. This is a records/citation tool —
+every field carries a source and confidence, which reads naturally as a dossier/ledger metaphor
+rather than a conversational assistant. Geist Mono (already loaded from Ticket 1) is used
+specifically for data values (bed/bath counts, sqft, tax amounts) to give numbers a distinct
+typographic voice from prose, reinforcing "this is sourced data, not generated text."
+
+**2026-08-27 — Real bug caught by live browser testing: flex children shrink to fit their container by default, so the result card wasn't being clipped by overflow — it was being silently compressed shorter than its natural height, hiding the bottom fields entirely.**
+`.chat-interface__thread` was set up as a scrolling flex column (`flex:1; min-height:0;
+overflow-y:auto`), which is the right pattern — but flex items default to `flex-shrink:1`, so a
+tall child (like a 9-field result card) shrinks down to fit the visible area instead of
+overflowing and triggering the scrollbar. Confirmed the exact mechanism by injecting a test
+element via the browser's JS console and measuring its actual rendered height against the
+height it was given. Fixed with `.chat-interface__thread > * { flex-shrink: 0; }`. This is a
+generally underappreciated flexbox gotcha worth remembering for any future scrolling flex
+column in this app.
+
+**2026-08-27 — Mobile/narrow-viewport layout and light-theme rendering were written to spec (CSS media queries + light-mode custom properties both exist) but not visually confirmed — the browser automation tool's window resize didn't propagate to the actual page viewport in this session (`resize_window` reported success but `window.innerWidth` stayed at desktop width).**
+A tooling limitation encountered live, not a code issue — didn't spend further time fighting it
+since the desktop flow was thoroughly verified through multiple real end-to-end runs. Worth a
+quick manual check (resize an actual browser window, toggle OS light mode) before considering
+the UI fully polished.

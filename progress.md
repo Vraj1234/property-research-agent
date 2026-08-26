@@ -89,11 +89,22 @@ Living tracker. Update checkboxes and Notes as work happens. See `PRD.md` for fu
   `/api/research` re-verification skipped this round to respect the rate limit cooldown and
   avoid further Parallel.ai spend — worth a quick manual spot-check before Ticket 6).
 
-## Ticket 6 — Chat UI + address parsing
-- [ ] Chat interface (Next.js)
-- [ ] OpenAI call to parse/normalize a free-text address from the user's message
-- [ ] Structured result card component, renders directly from pipeline JSON (no LLM writes it)
-- Notes:
+## Ticket 6 — Chat UI + address parsing ✅ CLOSED 2026-08-27
+- [x] Chat interface (Next.js) — "Property Dossier" style direction, see decisions.md
+- [x] OpenAI call to parse/normalize a free-text address from the user's message
+      (`gpt-4o-mini` was deprecated — switched to `gpt-5-nano`, see decisions.md)
+- [x] Structured result card component, renders directly from pipeline JSON (no LLM writes it)
+- Notes: `/api/research` now takes `{ message, deepResearch? }` instead of a bare `address` —
+  a raw address string is just the trivial case of a message to parse, so one endpoint/schema
+  covers both. New `NO_ADDRESS_FOUND` (422) error code when OpenAI can't find an address in
+  the message. Caught and fixed a real flexbox scroll bug live in the browser (tall content was
+  being silently compressed to fit instead of triggering scroll — see decisions.md). 19 new
+  unit tests (75 total); `npm run build` and lint clean; verified end-to-end live in the actual
+  browser across 3 real exchanges: a bare-address message (full card, 6/9 fields, mortgagee/
+  distance fields honestly null with notes), a non-address message (clean 422 error bubble),
+  and multi-turn thread accumulation. Mobile breakpoint and light theme are implemented but not
+  visually confirmed — a browser-automation tooling limitation this session, not a known bug;
+  worth a quick manual check.
 
 ## Ticket 7 — End-to-end wiring & follow-up Q&A
 - [ ] Orchestrator calls all tools per the source matrix, assembles final result

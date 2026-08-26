@@ -68,7 +68,7 @@ actual queries — **this doc should be updated with observed numbers once that 
 |---|---|---|
 | US Census Geocoder | $0 | Free public API |
 | OSM Overpass (fire station + fire hydrant) | $0 | Free public API. Fire station moved here from HIFLD after DHS discontinued HIFLD Open in Aug 2025 — see decisions.md, 2026-08-26 |
-| OpenAI `gpt-4o-mini` (address parsing / follow-ups) | $0.15 / 1M input tokens, $0.60 / 1M output tokens | [pricepertoken.com](https://pricepertoken.com/pricing-page/model/openai-gpt-4o-mini) |
+| OpenAI `gpt-5-nano` (address parsing / follow-ups) | $0.05 / 1M input tokens, $0.40 / 1M output tokens | **Updated 2026-08-27**: `gpt-4o-mini` was deprecated by OpenAI; `gpt-5-nano` is the current cheapest supported model — see decisions.md |
 | RentCast — Developer plan | $0 for first 50 requests/mo, then **$0.20/request** overage | [rentcast.io/api](https://www.rentcast.io/api) |
 | RentCast — Foundation plan | $74/mo incl. 1,000 requests (**$0.074/call** amortized), $0.06/call overage | [rentcast.io/api](https://www.rentcast.io/api) |
 | RentCast — Growth plan | $199/mo incl. 5,000 requests (**$0.040/call** amortized), $0.03/call overage | [rentcast.io/api](https://www.rentcast.io/api) |

@@ -1,3 +1,5 @@
+@import "../styles/tokens.css";
+
 :root {
   color-scheme: light dark;
 }
@@ -6,9 +8,42 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-body);
+  color: var(--color-ink);
+  background: var(--color-paper);
+  /* Faint paper grain — atmosphere without a heavy texture image. */
+  background-image:
+    radial-gradient(oklch(0% 0 0 / 0.015) 1px, transparent 1px),
+    radial-gradient(oklch(0% 0 0 / 0.012) 1px, transparent 1px);
+  background-size: 3px 3px, 7px 7px;
+  background-position: 0 0, 2px 3px;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background-image:
+      radial-gradient(oklch(100% 0 0 / 0.02) 1px, transparent 1px),
+      radial-gradient(oklch(100% 0 0 / 0.015) 1px, transparent 1px);
+    background-size: 3px 3px, 7px 7px;
+    background-position: 0 0, 2px 3px;
+  }
+}
+
+::selection {
+  background: var(--color-rust-tint);
+  color: var(--color-rust-strong);
+}
+
+button {
+  font: inherit;
+  color: inherit;
 }
 
 .placeholder {

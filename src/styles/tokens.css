@@ -1,0 +1,91 @@
+/**
+ * Design tokens — "Property Dossier" direction (decisions.md 2026-08-27).
+ * Warm paper + deep ledger green + rust accent, not tech-SaaS blue/purple.
+ */
+:root {
+  /* Paper / surfaces */
+  --color-paper: oklch(96.5% 0.014 85);
+  --color-paper-raised: oklch(98.5% 0.01 85);
+  --color-paper-line: oklch(87% 0.018 80);
+
+  /* Ink */
+  --color-ink: oklch(23% 0.015 60);
+  --color-ink-muted: oklch(46% 0.02 60);
+  --color-ink-faint: oklch(63% 0.018 70);
+
+  /* Ledger green — primary accent, agent identity, "found" states */
+  --color-ledger: oklch(33% 0.06 155);
+  --color-ledger-strong: oklch(24% 0.055 155);
+  --color-ledger-tint: oklch(92% 0.03 150);
+
+  /* Rust — secondary accent, CTA, active states */
+  --color-rust: oklch(52% 0.15 40);
+  --color-rust-strong: oklch(40% 0.14 35);
+  --color-rust-tint: oklch(93% 0.035 45);
+
+  /* Confidence semantics */
+  --color-confidence-high: var(--color-ledger);
+  --color-confidence-medium: oklch(62% 0.13 75);
+  --color-confidence-low: oklch(55% 0.16 30);
+  --color-confidence-none: var(--color-ink-faint);
+
+  /* Type */
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-body: var(--font-geist-sans), system-ui, sans-serif;
+  --font-data: var(--font-geist-mono), ui-monospace, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: clamp(1.25rem, 1.1rem + 0.6vw, 1.5rem);
+  --text-2xl: clamp(1.75rem, 1.4rem + 1.4vw, 2.5rem);
+
+  /* Space */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+
+  /* Shape */
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  /* Shadow — warm-toned, not default blue-gray */
+  --shadow-card: 0 1px 2px oklch(30% 0.03 60 / 0.08), 0 8px 24px oklch(30% 0.03 60 / 0.1);
+  --shadow-inset-line: inset 0 1px 0 oklch(100% 0 0 / 0.5);
+
+  --duration-fast: 150ms;
+  --duration-normal: 280ms;
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-paper: oklch(21% 0.014 60);
+    --color-paper-raised: oklch(25% 0.016 60);
+    --color-paper-line: oklch(33% 0.02 60);
+
+    --color-ink: oklch(93% 0.01 80);
+    --color-ink-muted: oklch(74% 0.015 75);
+    --color-ink-faint: oklch(55% 0.015 70);
+
+    --color-ledger: oklch(78% 0.1 155);
+    --color-ledger-strong: oklch(88% 0.09 155);
+    --color-ledger-tint: oklch(30% 0.05 155);
+
+    --color-rust: oklch(72% 0.14 45);
+    --color-rust-strong: oklch(80% 0.13 45);
+    --color-rust-tint: oklch(32% 0.06 40);
+
+    --color-confidence-medium: oklch(75% 0.13 80);
+    --color-confidence-low: oklch(70% 0.16 30);
+
+    --shadow-card: 0 1px 2px oklch(0% 0 0 / 0.3), 0 8px 24px oklch(0% 0 0 / 0.35);
+    --shadow-inset-line: inset 0 1px 0 oklch(100% 0 0 / 0.04);
+  }
+}

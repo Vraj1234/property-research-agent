@@ -44,7 +44,7 @@ export interface NearbyDistance {
 export interface FieldResult<T = unknown> {
   field: PropertyFieldKey;
   value: T | null;
-  /** Name of the provider that supplied the value, e.g. "RentCast", "Parallel.ai", "HIFLD". */
+  /** Name of the provider that supplied the value, e.g. "RentCast", "Parallel.ai", "OpenStreetMap Overpass". */
   source: string | null;
   confidence: Confidence | null;
   /** Optional caveat surfaced to the user, e.g. sparse OSM hydrant coverage nearby. */
@@ -68,7 +68,7 @@ export interface ResearchResult {
   notices: string[];
 }
 
-export type ApiErrorCode = "INVALID_INPUT" | "NO_MATCH" | "UPSTREAM_ERROR";
+export type ApiErrorCode = "INVALID_INPUT" | "NO_MATCH" | "NO_ADDRESS_FOUND" | "UPSTREAM_ERROR";
 
 export interface ApiErrorBody {
   error: {
