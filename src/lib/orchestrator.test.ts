@@ -6,12 +6,19 @@ vi.mock("./rentcast", async () => {
   return { ...actual, getPropertyRecord: vi.fn() };
 });
 vi.mock("./webResearchFallback", () => ({ webResearchFallback: vi.fn() }));
+vi.mock("./distanceFields", () => ({ distanceFields: vi.fn() }));
 
 import { geocodeAddress } from "./geocode";
 import { getPropertyRecord, RentCastError } from "./rentcast";
 import { webResearchFallback } from "./webResearchFallback";
+import { distanceFields } from "./distanceFields";
 import { researchAddress } from "./orchestrator";
 import type { FieldResult } from "./types";
+
+const mockDistanceFields: FieldResult[] = [
+  { field: "nearestFireStationDistance", value: { distanceMiles: 1.2, name: "Station 6" }, source: "OpenStreetMap Overpass", confidence: "high" },
+  { field: "nearestFireHydrantDistance", value: { distanceMiles: 0.1, name: null }, source: "OpenStreetMap Overpass", confidence: "high" },
+];
 
 const mockGeocode = { latitude: 29.48, longitude: -98.35, matchedAddress: "1 Main St" };
 const RENTCAST_FIELD_KEYS = [
@@ -29,6 +36,7 @@ describe("researchAddress", () => {
     // By default, echo whatever baseFields the orchestrator built — the
     // fallback layer's own behavior is covered in webResearchFallback.test.ts.
     vi.mocked(webResearchFallback).mockImplementation(async (_address, baseFields) => baseFields);
+    vi.mocked(distanceFields).mockResolvedValue(mockDistanceFields);
   });
 
   afterEach(() => {
@@ -53,7 +61,7 @@ describe("researchAddress", () => {
     const result = await researchAddress("5500 Grand Lake Dr, San Antonio, TX 78244");
 
     expect(result.geocode).toEqual(mockGeocode);
-    expect(result.fields).toEqual(enriched);
+    expect(result.fields).toEqual([...enriched, ...mockDistanceFields]);
     expect(result.input).toEqual({ address: "5500 Grand Lake Dr, San Antonio, TX 78244", deepResearch: false });
     expect(result.notices).toEqual([]);
     expect(webResearchFallback).toHaveBeenCalledWith(
@@ -65,6 +73,18 @@ describe("researchAddress", () => {
       "2024-11-18T00:00:00.000Z",
       { deepResearch: false },
     );
+    expect(distanceFields).toHaveBeenCalledWith(mockGeocode.latitude, mockGeocode.longitude);
+  });
+
+  it("merges distance fields alongside the RentCast/Parallel.ai fields, running both in parallel", async () => {
+    vi.mocked(getPropertyRecord).mockResolvedValue(null);
+
+    const result = await researchAddress("some address");
+
+    const fieldKeys = result.fields.map((f) => f.field);
+    expect(fieldKeys).toContain("nearestFireStationDistance");
+    expect(fieldKeys).toContain("nearestFireHydrantDistance");
+    expect(distanceFields).toHaveBeenCalledWith(mockGeocode.latitude, mockGeocode.longitude);
   });
 
   it("threads deepResearch through to the fallback layer and adds a latency notice", async () => {
@@ -119,5 +139,6 @@ describe("researchAddress", () => {
 
     await expect(researchAddress("bad address")).rejects.toThrow("geocode boom");
     expect(webResearchFallback).not.toHaveBeenCalled();
+    expect(distanceFields).not.toHaveBeenCalled();
   });
 });

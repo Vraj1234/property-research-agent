@@ -67,8 +67,7 @@ actual queries — **this doc should be updated with observed numbers once that 
 | Provider | Unit cost | Source |
 |---|---|---|
 | US Census Geocoder | $0 | Free public API |
-| HIFLD fire station dataset | $0 | Static download, bundled/cached locally |
-| OSM Overpass (fire hydrant) | $0 | Free public API |
+| OSM Overpass (fire station + fire hydrant) | $0 | Free public API. Fire station moved here from HIFLD after DHS discontinued HIFLD Open in Aug 2025 — see decisions.md, 2026-08-26 |
 | OpenAI `gpt-4o-mini` (address parsing / follow-ups) | $0.15 / 1M input tokens, $0.60 / 1M output tokens | [pricepertoken.com](https://pricepertoken.com/pricing-page/model/openai-gpt-4o-mini) |
 | RentCast — Developer plan | $0 for first 50 requests/mo, then **$0.20/request** overage | [rentcast.io/api](https://www.rentcast.io/api) |
 | RentCast — Foundation plan | $74/mo incl. 1,000 requests (**$0.074/call** amortized), $0.06/call overage | [rentcast.io/api](https://www.rentcast.io/api) |
@@ -89,7 +88,7 @@ actual queries — **this doc should be updated with observed numbers once that 
 | Parallel.ai — HVAC null-fill | fires ~50% of queries (inconsistently populated), `base` tier | 0.50 × $0.010 = $0.0050 |
 | Parallel.ai — bed/bath/sqft cross-check | fires ~20% of queries (recency trigger), `base` tier | 0.20 × $0.010 = $0.0020 |
 | **Parallel.ai subtotal** | | **≈ $0.033/query** |
-| Geocoding, fire station, fire hydrant | Census + HIFLD + Overpass | $0 |
+| Geocoding, fire station, fire hydrant | Census + OSM Overpass | $0 |
 
 **Total per query = ~$0.033 (AI/enrichment side) + RentCast's per-call cost, which depends
 entirely on which plan tier you're on:**

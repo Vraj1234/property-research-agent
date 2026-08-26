@@ -1,3 +1,4 @@
+import { distanceFields } from "./distanceFields";
 import { geocodeAddress } from "./geocode";
 import { getPropertyRecord, RentCastError, type RentCastPropertyRecord } from "./rentcast";
 import { webResearchFallback } from "./webResearchFallback";
@@ -68,23 +69,14 @@ export interface ResearchAddressOptions {
   deepResearch?: boolean;
 }
 
-/**
- * Deterministic pipeline entry point — no LLM in this loop (PRD.md §6).
- * Geocoding hard-fails the whole request on miss (unchanged from Ticket 2);
- * a RentCast lookup failure does not — it degrades to honest "not found"
- * fields that Ticket 4's fallback layer still gets a chance to fill via
- * Parallel.ai, rather than taking down a request that already successfully
- * geocoded (PRD.md §8: never a silent omission, but also never a scary 500
- * over one provider's outage). Ticket 5 will extend this further with the
- * fire station/hydrant distance tools.
- */
-export async function researchAddress(
+/** RentCast → Parallel.ai pipeline for the 7 fields the fallback rule
+ * covers (PRD.md §5). Split out so it can run in parallel with the
+ * geometry-only distance fields (Ticket 5), which need nothing from
+ * RentCast or Parallel.ai. */
+async function getPropertyFields(
   address: string,
-  options: ResearchAddressOptions = {},
-): Promise<ResearchResult> {
-  const deepResearch = options.deepResearch ?? false;
-  const geocode = await geocodeAddress(address);
-
+  deepResearch: boolean,
+): Promise<FieldResult[]> {
   let baseFields: FieldResult[];
   let lastSaleDate: string | null = null;
   try {
@@ -101,7 +93,31 @@ export async function researchAddress(
     baseFields = notFoundFields(`RentCast lookup failed: ${message}`);
   }
 
-  const fields = await webResearchFallback(address, baseFields, lastSaleDate, { deepResearch });
+  return webResearchFallback(address, baseFields, lastSaleDate, { deepResearch });
+}
+
+/**
+ * Deterministic pipeline entry point — no LLM in this loop (PRD.md §6).
+ * Geocoding hard-fails the whole request on miss (unchanged from Ticket 2);
+ * a RentCast lookup failure does not — it degrades to honest "not found"
+ * fields that the fallback layer still gets a chance to fill via
+ * Parallel.ai, rather than taking down a request that already successfully
+ * geocoded (PRD.md §8: never a silent omission, but also never a scary 500
+ * over one provider's outage). The RentCast/Parallel.ai pipeline and the
+ * fire station/hydrant distance lookups run in parallel (PRD.md §8) since
+ * neither depends on the other — both only need the geocoded point.
+ */
+export async function researchAddress(
+  address: string,
+  options: ResearchAddressOptions = {},
+): Promise<ResearchResult> {
+  const deepResearch = options.deepResearch ?? false;
+  const geocode = await geocodeAddress(address);
+
+  const [propertyFields, geometryFields] = await Promise.all([
+    getPropertyFields(address, deepResearch),
+    distanceFields(geocode.latitude, geocode.longitude),
+  ]);
 
   const notices: string[] = [];
   if (deepResearch) {
@@ -113,7 +129,7 @@ export async function researchAddress(
   return {
     input: { address, deepResearch },
     geocode,
-    fields,
+    fields: [...propertyFields, ...geometryFields],
     notices,
   };
 }

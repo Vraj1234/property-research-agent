@@ -69,10 +69,25 @@ Living tracker. Update checkboxes and Notes as work happens. See `PRD.md` for fu
   with a real recency-triggered cross-check window, and a sparse record needing null-fills
   across owner/sqft/tax/mortgagee).
 
-## Ticket 5 — Fire station & hydrant distance tools
-- [ ] `nearestFireStation()` — HIFLD dataset bundled/cached + haversine
-- [ ] `nearestFireHydrant()` — OSM Overpass `around:` query
-- Notes:
+## Ticket 5 — Fire station & hydrant distance tools ✅ CLOSED 2026-08-26
+- [x] `nearestFireStation()` — OSM Overpass `around:` query + haversine (**not** HIFLD — see
+      decisions.md: HIFLD Open was discontinued by DHS in Aug 2025, discovered while starting
+      this ticket)
+- [x] `nearestFireHydrant()` — OSM Overpass `around:` query
+- Notes: Both fields now share one Overpass client (`overpass.ts`) and a `distanceFields()`
+  field-builder, run in parallel with the RentCast/Parallel.ai pipeline in the orchestrator
+  since neither needs anything but the geocoded point. No fallback for either field per
+  PRD.md §5 — a miss is an honest null with a coverage-gap note, same treatment as a genuine
+  Overpass failure (different note). Radii: 25km for fire stations (live-tested sparser OSM
+  coverage than expected — 0 stations within 8km of a real suburban address), 3km for
+  hydrants. Hit and fixed a real bug: Node's `fetch` got HTTP 406 from Overpass on every call
+  (its default headers look bot-like to Overpass's WAF) while `curl` succeeded — fixed by
+  setting explicit Accept/Accept-Encoding/Accept-Language/Sec-Fetch-Mode/User-Agent headers.
+  Also personally tripped Overpass's fair-use rate limiting from debugging volume — a live
+  instance of the exact risk already logged in PRD.md §9. 14 new unit tests (51 total);
+  `npm run build` clean; live-verified the fix directly against the Overpass API (full
+  `/api/research` re-verification skipped this round to respect the rate limit cooldown and
+  avoid further Parallel.ai spend — worth a quick manual spot-check before Ticket 6).
 
 ## Ticket 6 — Chat UI + address parsing
 - [ ] Chat interface (Next.js)

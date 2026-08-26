@@ -28,6 +28,14 @@ export interface BedBathCount {
   bathrooms: number | null;
 }
 
+/** Value shape for `nearestFireStationDistance` / `nearestFireHydrantDistance`. */
+export interface NearbyDistance {
+  distanceMiles: number;
+  /** OSM's `name` tag for the matched node, when present — most fire
+   * hydrants have none; most fire stations do. */
+  name: string | null;
+}
+
 /**
  * The result for a single field. `value` and `source` are both `null` when no
  * provider (primary or fallback) could find the field — this must be surfaced

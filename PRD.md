@@ -67,7 +67,7 @@ pass before that expansion — tracked in the v2 backlog (§10), not required fo
 | Mortgagee / lender | RentCast (if populated) | Parallel.ai Task API (best-effort web research) | Weakest-coverage field at this budget tier. If accuracy here matters more than expected, upgrade path is ATTOM Data (see §10) |
 | Heating / cooling type | RentCast structure data | Parallel.ai Task API | Most likely field to need the AI-research fallback — structured providers populate this inconsistently |
 | Property tax amount | RentCast tax assessment | Parallel.ai (null-fill) | Dropped Regrid as a fallback here — RentCast coverage is already solid for tax, a second structured provider added cost without meaningfully improving hit rate |
-| Distance to nearest fire station | HIFLD national fire station dataset (free, DHS/CISA, ~53k stations) + haversine calc from geocoded point | — | Static dataset, reliable, no live API dependency |
+| Distance to nearest fire station | OpenStreetMap Overpass API (`amenity=fire_station`, `around:` radius query) + haversine calc from geocoded point | — | **Changed 2026-08-26**: originally HIFLD's static dataset, but HIFLD Open was discontinued by DHS in Aug 2025 (see decisions.md). Same live API as fire hydrants now — patchier coverage than the old HIFLD dataset, accepted as a documented limitation (25km search radius) |
 | Distance to nearest fire hydrant | OpenStreetMap Overpass API (`emergency=fire_hydrant`, `around:` radius query) | — | Crowdsourced — coverage gaps in rural/under-mapped areas are a known limitation, not a bug to fix |
 
 **One fallback rule for every field, no exceptions:** call the primary source (RentCast), and
@@ -133,7 +133,7 @@ Next.js API route  /api/research
    │
    ├─ geocodeAddress()        → US Census Geocoder
    ├─ getPropertyRecord()     → RentCast Property Data API (primary for all 7 non-geo fields)
-   ├─ nearestFireStation()    → HIFLD static dataset (bundled/cached) + haversine
+   ├─ nearestFireStation()    → OpenStreetMap Overpass API + haversine (was HIFLD; see §5, decisions.md)
    ├─ nearestFireHydrant()    → OpenStreetMap Overpass API
    └─ webResearchFallback()   → Parallel.ai Task API — one reusable function, called for
                                 any field RentCast left null, plus a recency-triggered
@@ -167,8 +167,8 @@ sent to or readable from the browser.
 | `RENTCAST_API_KEY` | Property records | Free tier: 50 calls/mo |
 | `PARALLEL_API_KEY` | Gap-filling web research | Only called when structured data is missing — keep usage low by design |
 
-No key needed for: US Census Geocoder, HIFLD dataset (static download, bundle/cache locally),
-OpenStreetMap Overpass API.
+No key needed for: US Census Geocoder, OpenStreetMap Overpass API (used for both fire station
+and fire hydrant distance as of 2026-08-26 — see decisions.md).
 
 ## 8. Success Criteria (MVP)
 

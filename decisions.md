@@ -18,7 +18,8 @@ a fast, cheap MVP with a documented upgrade path to ATTOM if mortgage-field cove
 
 **2026-08-25 — Fire station distance sourced from HIFLD (DHS/CISA), not a live API.**
 Free, comprehensive (~53k stations), and static — no rate limits or uptime dependency for
-data that doesn't change often.
+data that doesn't change often. **Superseded 2026-08-26 — see the Ticket 5 entry further
+down: HIFLD Open was discontinued, this decision no longer holds.**
 
 **2026-08-25 — Fire hydrant distance sourced from OpenStreetMap Overpass API.**
 Only free, queryable hydrant dataset available; accepted crowdsourced coverage gaps
@@ -188,3 +189,36 @@ fields null with no further attempt. Ticket 4's fallback layer runs unconditiona
 whatever `baseFields` the orchestrator hands it, so a transient RentCast outage no longer
 forecloses Parallel.ai's chance to still answer owner/mortgagee/HVAC/etc. via its own
 independent web research.
+
+**2026-08-26 — Test convention: `afterEach` must call both `vi.restoreAllMocks()` and `vi.clearAllMocks()`, not just the former.**
+Found while writing Ticket 4's orchestrator tests: `vi.restoreAllMocks()` resets a module-level
+`vi.fn()` mock's *implementation* between tests but does not clear its recorded `.mock.calls`
+history, so later tests silently saw earlier tests' calls (a `not.toHaveBeenCalled()` assertion
+failed because of a call 3 tests earlier). Both files that mock module-level functions
+(`orchestrator.test.ts`, `webResearchFallback.test.ts`) now call both in `afterEach` — apply the
+same pair in any future test file that does the same kind of module mocking.
+
+**2026-08-26 — HIFLD Open (the fire station data source PRD.md §5 specified) was discontinued by DHS on 2025-08-25; switched fire stations to OSM Overpass, the same API already planned for hydrants.**
+Discovered while starting Ticket 5 — the old `hifld-geoplatform.opendata.arcgis.com` portal
+404s outright ("Domain record(s) not found"), and DHS confirms the public portal was shut down
+exactly a year before this ticket. A community Parquet archive exists (source.coop/seerai/hifld)
+but is a frozen snapshot that only gets staler over time and would've added a new dependency
+(a Parquet reader) just to bundle a static file — a worse trade than the original "free, no
+dependency" appeal of HIFLD. Live-tested OSM Overpass's `amenity=fire_station` coverage before
+committing to it: 0 stations within 8km of a real suburban test address, 6 within 20km — real,
+but genuinely patchier than fire hydrants. Stakeholder chose Overpass anyway over bundling the
+Parquet archive or hunting for another live official mirror, accepting the coverage gap as a
+documented limitation — the same trade already made for hydrants. Fire station search radius
+set to 25km to accommodate that observed sparsity; hydrants stay at 3km given their much higher
+expected density in developed areas.
+
+**2026-08-26 — Overpass API calls need explicit Accept/Accept-Encoding/Accept-Language/Sec-Fetch-Mode/User-Agent headers; Node's fetch defaults get HTTP 406 from this endpoint every time.**
+Live-tested and reproduced reliably: the identical query via `curl` or Node's raw `https`
+module returned 200, but Node's `fetch` (undici) — with its automatically-added header set —
+got HTTP 406 ("Not Acceptable") from overpass-api.de's Apache front end on every attempt.
+Bisected by overriding each auto-added header individually (none alone fixed it) and then all
+five together (fixed it twice, consistently) — reads as the WAF fingerprinting undici's
+default header combination as bot-like, not any single header. `queryNearbyNodes()` now sets
+conventional values for all five explicitly. Also hit Overpass's fair-use rate limiting
+firsthand from the volume of debugging requests this took (all round-robin mirror IPs started
+timing out) — a live demonstration of the exact risk PRD.md §9 already flags, not a new one.
