@@ -49,12 +49,25 @@ Living tracker. Update checkboxes and Notes as work happens. See `PRD.md` for fu
   already succeeded. 13 new unit tests (7 RentCast, 6 orchestrator); `npm run build` clean;
   verified end-to-end against 3 live addresses (data-rich record, sparse record, no-record).
 
-## Ticket 4 — Fallback & enrichment layer (Parallel.ai only — Regrid dropped, see decisions.md)
-- [ ] `webResearchFallback()` — Parallel.ai, one reusable function covering every field:
-  - [ ] null-fill mode (owner name, mortgagee, HVAC, any other null field) — use `core`
-        processor tier for owner/mortgagee (harder lookups), `base` for HVAC
-  - [ ] recency-triggered bed/bath/sqft cross-check (last sale/listing < ~2 yrs) — `base` tier
-- Notes:
+## Ticket 4 — Fallback & enrichment layer (Parallel.ai only — Regrid dropped, see decisions.md) ✅ CLOSED 2026-08-26
+- [x] `webResearchFallback()` — Parallel.ai, one reusable function covering every field:
+  - [x] null-fill mode (owner name, mortgagee, HVAC, yearBuilt, propertyTaxAmount, bed/bath/sqft)
+  - [x] recency-triggered bed/bath/sqft cross-check (last sale/listing < ~2 yrs), combined into
+        the same call as the bed/bath/sqft null-fill rather than a separate provider call
+- Notes: **Deviated from the original `core`-for-owner/mortgagee plan** — live-tested `core`
+  tier at ~3.5 min for one mortgagee lookup, which would make nearly every query take minutes
+  (mortgagee fires almost always). Shipped `base` tier by default for everything, with an
+  opt-in `deepResearch` flag (threaded through `researchAddress`/`/api/research`) that swaps
+  mortgagee/owner to `core` when explicitly requested; `ResearchResult` gained a `notices`
+  array to warn about the latency when it's on. The interactive "want a deeper check?" chat
+  prompt itself needs Ticket 6/7's chat UI and follow-up logic — deferred, not dropped; see
+  decisions.md. Also fixed two real "how does the model signal 'unknown'" bugs caught only by
+  live testing (prose refusals instead of empty strings; `["NOT_FOUND"]` instead of `[]` for
+  array fields) — see decisions.md for both. RentCast failures now also get a full fallback
+  attempt (a resiliency improvement over Ticket 3 alone). 21 new unit tests (37 total);
+  `npm run build` clean; verified end-to-end against 2 live addresses (full RentCast record
+  with a real recency-triggered cross-check window, and a sparse record needing null-fills
+  across owner/sqft/tax/mortgagee).
 
 ## Ticket 5 — Fire station & hydrant distance tools
 - [ ] `nearestFireStation()` — HIFLD dataset bundled/cached + haversine

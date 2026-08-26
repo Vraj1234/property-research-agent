@@ -50,11 +50,14 @@ export interface GeocodeResult {
   matchedAddress: string;
 }
 
-/** Full response shape for POST /api/research. Later tickets populate `fields`. */
+/** Full response shape for POST /api/research. */
 export interface ResearchResult {
-  input: { address: string };
+  input: { address: string; deepResearch: boolean };
   geocode: GeocodeResult;
   fields: FieldResult[];
+  /** User-facing heads-up messages not tied to any one field, e.g. the
+   * deep-research latency warning (Ticket 4, decisions.md 2026-08-26). */
+  notices: string[];
 }
 
 export type ApiErrorCode = "INVALID_INPUT" | "NO_MATCH" | "UPSTREAM_ERROR";

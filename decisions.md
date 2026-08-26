@@ -141,3 +141,50 @@ UX," fail loudly and clearly but don't silently guess), a downstream provider ou
 turn a good geocode into a 500 for the whole request. The orchestrator catches RentCastError,
 logs the real cause server-side, and marks the affected fields null with an explanatory note —
 same shape as a genuine "no record found," just a different note.
+
+**2026-08-26 — Parallel.ai fallback (Ticket 4): `base` tier by default for every field including mortgagee/owner, `core` only behind an opt-in `deepResearch` flag; the interactive "want a deeper check?" prompt itself is deferred to Ticket 6/7.**
+Live-tested `core` tier for a single mortgagee lookup and it took ~3.5 minutes — since
+mortgagee fires on nearly every query (RentCast almost never has it), defaulting to `core`
+would make most requests take minutes, not seconds, directly against PRD.md §8. Stakeholder
+call: default to `base` everywhere, add a `deepResearch` boolean (threaded through
+`researchAddress` → `webResearchFallback` → `/api/research`'s request body) that swaps
+mortgagee/owner to `core` when explicitly requested, and surface a `notices` array on
+`ResearchResult` warning about the latency when it's on. Actually *asking* the user "want me to
+double-check this?" mid-conversation needs a chat turn and follow-up logic that don't exist yet
+(Ticket 6/7) — building that loop inside the deterministic pipeline now would also violate the
+"no LLM decisions in the core pipeline" architecture (PRD.md §6). Ticket 4 ships the mechanism
+(tier toggle + per-field confidence already in `FieldResult`); the prompt itself is explicitly
+deferred, not dropped.
+
+**2026-08-26 — `base`-tier Parallel.ai timeout settled at 90s, not tuned further upward, after live testing showed it varies a lot by question difficulty (HVAC ~13s, mortgagee exceeded even 120s on one address).**
+Initially set at 60s from a single HVAC data point; too short for mortgagee, which got
+wrongly logged as "failed" when it may well have finished given more time. Rather than keep
+chasing an empirical ceiling (each retest costs real money and 1-2 minutes), settled on a
+deliberate, bounded 90s: a field that can't resolve on `base` within that window is treated as
+an honest "couldn't determine this quickly" — the same class of outcome as "not found" — not a
+defect to eliminate by inflating the default timeout indefinitely. That gap is exactly what the
+opt-in `deepResearch`/`core` path (5-minute allowance) exists to cover.
+
+**2026-08-26 — Live-testing surfaced two real "how does the model say 'I don't know'" bugs that plain doc-reading wouldn't have caught, both fixed before shipping.** (1) Asked a *string* field to be left blank when unknown, Parallel.ai instead wrote a prose refusal ("Unknown—not identified in the available public records.") rather than an empty string or omitted key — fixed by instructing an explicit machine-readable sentinel (`"NOT_FOUND"`) in every string/array prompt and checking for it on the way back. (2) Asked for an *array* of strings, Parallel.ai wrapped that same sentinel in the array shape (`["NOT_FOUND"]`) instead of returning `[]` — a subtler dodge the first fix didn't catch; the not-found check now also treats an array whose entries are all just the sentinel as not-found. Numeric fields (yearBuilt, propertyTaxAmount, bed/bath/sqft) can't hold a string sentinel at all under a strict `type: number` schema, so they rely on the model omitting the key entirely when instructed to — not exhaustively live-verified beyond one real case (a genuine `$0` answer, not a true "unknown"), and forcing a typed field onto an LLM carries a real, documented risk of a plausible-looking guess instead of a clean abstention. Flagged for Ticket 8 QA to spot-check with more addresses, not solved perfectly here.
+
+**2026-08-26 — Bed/bath/sqft null-fill and cross-check share one combined Parallel.ai call, and each of the two fields decides independently whether it needs that call's answer.**
+PRD.md §5 already treats "bed/bath/sqft cross-check" as one trigger, not three separate calls
+— extended that to null-fill too, since asking for all three in one shot is no more expensive
+than asking for one. A field is touched by the result only if *that field* is null (null-fill)
+or has a value flagged by a recent sale/listing (cross-check) — e.g. bed/bath can be null-filled
+while sqft is independently cross-checked in the very same call, without either mode leaking
+into a field that didn't need it.
+
+**2026-08-26 — Cross-check merge rule: override RentCast's bed/bath/sqft value only when Parallel.ai actually disagrees with it; leave it untouched if they agree or the cross-check call fails.**
+A cross-check that silently confirms RentCast doesn't need to bother anyone; only a genuine
+discrepancy is worth surfacing, with a note naming RentCast's original figure. A failed
+cross-check attempt must never erase a real structured value — the field just keeps its
+existing RentCast-sourced result, same principle as a RentCast provider outage not being
+allowed to take down fields it never even touched.
+
+**2026-08-26 — A RentCast failure (not just "no record") now also gets a full Parallel.ai fallback attempt, not just an honest null.**
+A real resiliency improvement over Ticket 3 alone: previously a RentCast 500 marked all 6
+fields null with no further attempt. Ticket 4's fallback layer runs unconditionally on
+whatever `baseFields` the orchestrator hands it, so a transient RentCast outage no longer
+forecloses Parallel.ai's chance to still answer owner/mortgagee/HVAC/etc. via its own
+independent web research.

@@ -6,6 +6,10 @@ import type { ApiErrorBody } from "@/lib/types";
 
 const requestSchema = z.object({
   address: z.string().trim().min(3, "address must be a non-empty string"),
+  /** Opt-in deep research for mortgagee/owner (Parallel `core` tier) — much
+   * slower (~3.5 min observed vs. ~15-40s on `base`), see decisions.md
+   * 2026-08-26. Defaults to false. */
+  deepResearch: z.boolean().optional(),
 });
 
 function errorResponse(
@@ -34,7 +38,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await researchAddress(parsed.data.address);
+    const result = await researchAddress(parsed.data.address, {
+      deepResearch: parsed.data.deepResearch,
+    });
     return NextResponse.json(result, { status: 200 });
   } catch (err) {
     if (err instanceof GeocodingError) {

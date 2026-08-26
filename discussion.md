@@ -45,6 +45,14 @@ was cut once its pricing turned out to be a $500–$2,000/mo subscription rather
 — a bad trade for an occasional single-field fallback (see `decisions.md`). Owner name now
 follows the same RentCast → Parallel.ai rule as everything else.
 
+**Update from Ticket 4 (2026-08-26):** owner/mortgagee ship on Parallel's `base` processor
+tier by default, not `core` as originally planned below — live testing found `core` took
+~3.5 minutes for a single mortgagee lookup, and since mortgagee fires on nearly every query
+(RentCast almost never has it), defaulting to `core` would make most queries take minutes
+instead of seconds. `core` is now an opt-in `deepResearch` flag for when accuracy matters more
+than speed on those two fields. The cost table below still shows the original `core`-based
+estimate — see the corrected numbers immediately after it.
+
 ## 3. Per-Query Cost Model
 
 ### Method and sources
@@ -97,6 +105,21 @@ entirely on which plan tier you're on:**
 A follow-up question in the same chat adds one more small OpenAI call (~$0.0005–$0.001,
 depending on how much structured context is in play) — not counted above since it's optional,
 not part of every query.
+
+**Corrected for what actually shipped in Ticket 4:** owner/mortgagee null-fill run on `base`
+($0.010/call), not `core` ($0.025/call), by default.
+
+| Component | Assumption | Cost |
+|---|---|---|
+| Parallel.ai — mortgagee null-fill | fires ~90% of queries, `base` tier | 0.90 × $0.010 = $0.0090 |
+| Parallel.ai — owner null-fill | fires ~15% of queries, `base` tier | 0.15 × $0.010 = $0.0015 |
+| Parallel.ai — HVAC null-fill | fires ~50% of queries, `base` tier | 0.50 × $0.010 = $0.0050 |
+| Parallel.ai — bed/bath/sqft cross-check | fires ~20% of queries, `base` tier | 0.20 × $0.010 = $0.0020 |
+| **Parallel.ai subtotal (base tier, default)** | | **≈ $0.018/query** |
+
+Roughly half the original `core`-based estimate (~$0.033 → ~$0.018/query). Deep research mode
+(`deepResearch: true`) reverts owner/mortgagee to the original `core`-tier cost and the ~3.5
+minute latency that comes with it — an explicit opt-in trade, not the default path.
 
 ### Monthly cost at realistic MVP volumes
 

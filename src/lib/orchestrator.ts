@@ -1,11 +1,12 @@
 import { geocodeAddress } from "./geocode";
 import { getPropertyRecord, RentCastError, type RentCastPropertyRecord } from "./rentcast";
+import { webResearchFallback } from "./webResearchFallback";
 import type { Confidence, FieldResult, PropertyFieldKey, ResearchResult } from "./types";
 
 /** Every field this ticket sources from RentCast. Mortgagee is intentionally
- * absent here — RentCast never returns it, so it's left out of `fields`
- * until Ticket 4 actually attempts to source it via Parallel.ai, rather than
- * added now as a stub nothing has tried yet. */
+ * absent here — RentCast never returns it, so it's left out of `baseFields`
+ * entirely; Ticket 4's webResearchFallback appends it after attempting it
+ * via Parallel.ai, the only provider that ever supplies it. */
 const RENTCAST_FIELDS: PropertyFieldKey[] = [
   "bedBathCount",
   "squareFootage",
@@ -60,35 +61,59 @@ function fieldsFromRecord(record: RentCastPropertyRecord): FieldResult[] {
   ];
 }
 
+export interface ResearchAddressOptions {
+  /** Opt-in deep research for mortgagee/owner via Parallel's `core` tier —
+   * much slower (~3.5 min observed vs. ~15-40s on `base`), see decisions.md
+   * 2026-08-26. Off by default. */
+  deepResearch?: boolean;
+}
+
 /**
  * Deterministic pipeline entry point — no LLM in this loop (PRD.md §6).
  * Geocoding hard-fails the whole request on miss (unchanged from Ticket 2);
  * a RentCast lookup failure does not — it degrades to honest "not found"
- * fields with an explanatory note instead of taking down a request that
- * already successfully geocoded (PRD.md §8: never a silent omission, but
- * also never a scary 500 over one provider's outage). Tickets 4-5 will
- * extend this further with the Parallel.ai fallback and the fire
- * station/hydrant distance tools.
+ * fields that Ticket 4's fallback layer still gets a chance to fill via
+ * Parallel.ai, rather than taking down a request that already successfully
+ * geocoded (PRD.md §8: never a silent omission, but also never a scary 500
+ * over one provider's outage). Ticket 5 will extend this further with the
+ * fire station/hydrant distance tools.
  */
-export async function researchAddress(address: string): Promise<ResearchResult> {
+export async function researchAddress(
+  address: string,
+  options: ResearchAddressOptions = {},
+): Promise<ResearchResult> {
+  const deepResearch = options.deepResearch ?? false;
   const geocode = await geocodeAddress(address);
 
-  let fields: FieldResult[];
+  let baseFields: FieldResult[];
+  let lastSaleDate: string | null = null;
   try {
     const record = await getPropertyRecord(address);
-    fields =
-      record === null
-        ? notFoundFields("No RentCast property record found for this address.")
-        : fieldsFromRecord(record);
+    if (record === null) {
+      baseFields = notFoundFields("No RentCast property record found for this address.");
+    } else {
+      baseFields = fieldsFromRecord(record);
+      lastSaleDate = record.lastSaleDate;
+    }
   } catch (err) {
     const message = err instanceof RentCastError ? err.message : "Unexpected RentCast failure.";
     console.error("[researchAddress] RentCast lookup failed:", err);
-    fields = notFoundFields(`RentCast lookup failed: ${message}`);
+    baseFields = notFoundFields(`RentCast lookup failed: ${message}`);
+  }
+
+  const fields = await webResearchFallback(address, baseFields, lastSaleDate, { deepResearch });
+
+  const notices: string[] = [];
+  if (deepResearch) {
+    notices.push(
+      "Deep research mode is enabled for mortgagee/owner lookups — this request may take several minutes.",
+    );
   }
 
   return {
-    input: { address },
+    input: { address, deepResearch },
     geocode,
     fields,
+    notices,
   };
 }
