@@ -68,6 +68,15 @@ export interface ResearchResult {
   notices: string[];
 }
 
+/**
+ * POST /api/research's success shape (Ticket 7). A message either contains
+ * a new address to research, or — when it doesn't and a `previousResult`
+ * was supplied — is treated as a follow-up question about that result
+ * (PRD.md §4/§6: answered from already-fetched data only, never re-fetched,
+ * never fabricated beyond what's in `fields`).
+ */
+export type ChatResponse = { type: "research"; result: ResearchResult } | { type: "answer"; answer: string };
+
 export type ApiErrorCode = "INVALID_INPUT" | "NO_MATCH" | "NO_ADDRESS_FOUND" | "UPSTREAM_ERROR";
 
 export interface ApiErrorBody {

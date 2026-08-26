@@ -6,10 +6,16 @@ vi.mock("@/lib/addressParser", async () => {
   return { ...actual, parseAddressFromMessage: vi.fn() };
 });
 vi.mock("@/lib/orchestrator", () => ({ researchAddress: vi.fn() }));
+vi.mock("@/lib/followUp", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/followUp")>("@/lib/followUp");
+  return { ...actual, answerFollowUp: vi.fn() };
+});
 
 import { parseAddressFromMessage, AddressParseError } from "@/lib/addressParser";
 import { researchAddress } from "@/lib/orchestrator";
+import { answerFollowUp, FollowUpError } from "@/lib/followUp";
 import { GeocodingError } from "@/lib/geocode";
+import type { ResearchResult } from "@/lib/types";
 import { POST } from "./route";
 
 function postRequest(body: unknown): NextRequest {
@@ -19,10 +25,12 @@ function postRequest(body: unknown): NextRequest {
   });
 }
 
-const mockResult = {
+const mockResult: ResearchResult = {
   input: { address: "1600 Pennsylvania Ave NW, Washington, DC 20500", deepResearch: false },
   geocode: { latitude: 38.9, longitude: -77.03, matchedAddress: "1600 PENNSYLVANIA AVE NW" },
-  fields: [],
+  fields: [
+    { field: "yearBuilt", value: 1814, source: "RentCast", confidence: "high" },
+  ],
   notices: [],
 };
 
@@ -32,7 +40,7 @@ describe("POST /api/research", () => {
     vi.clearAllMocks();
   });
 
-  it("parses the message into an address, then runs the research pipeline on it", async () => {
+  it("parses the message into an address, runs the research pipeline, and wraps it as type: research", async () => {
     vi.mocked(parseAddressFromMessage).mockResolvedValue("1600 Pennsylvania Ave NW, Washington, DC 20500");
     vi.mocked(researchAddress).mockResolvedValue(mockResult);
 
@@ -40,14 +48,14 @@ describe("POST /api/research", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual(mockResult);
+    expect(body).toEqual({ type: "research", result: mockResult });
     expect(parseAddressFromMessage).toHaveBeenCalledWith("look up the white house for me");
     expect(researchAddress).toHaveBeenCalledWith("1600 Pennsylvania Ave NW, Washington, DC 20500", {
       deepResearch: undefined,
     });
   });
 
-  it("returns 422 NO_ADDRESS_FOUND when the message has no identifiable address", async () => {
+  it("returns 422 NO_ADDRESS_FOUND when no address is found and there's no previous result to fall back on", async () => {
     vi.mocked(parseAddressFromMessage).mockResolvedValue(null);
 
     const response = await POST(postRequest({ message: "what's the weather like today" }));
@@ -56,6 +64,46 @@ describe("POST /api/research", () => {
     expect(response.status).toBe(422);
     expect(body.error.code).toBe("NO_ADDRESS_FOUND");
     expect(researchAddress).not.toHaveBeenCalled();
+    expect(answerFollowUp).not.toHaveBeenCalled();
+  });
+
+  it("treats a message with no address as a follow-up question when a previousResult is supplied", async () => {
+    vi.mocked(parseAddressFromMessage).mockResolvedValue(null);
+    vi.mocked(answerFollowUp).mockResolvedValue("It was built in 1814.");
+
+    const response = await POST(
+      postRequest({ message: "how old is the house", previousResult: mockResult }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ type: "answer", answer: "It was built in 1814." });
+    expect(answerFollowUp).toHaveBeenCalledWith("how old is the house", mockResult);
+    expect(researchAddress).not.toHaveBeenCalled();
+  });
+
+  it("returns 502 when follow-up answering itself fails", async () => {
+    vi.mocked(parseAddressFromMessage).mockResolvedValue(null);
+    vi.mocked(answerFollowUp).mockRejectedValue(
+      new FollowUpError("UPSTREAM_ERROR", "OpenAI follow-up answering failed: rate limited"),
+    );
+
+    const response = await POST(postRequest({ message: "how old is it", previousResult: mockResult }));
+    const body = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(body.error.code).toBe("UPSTREAM_ERROR");
+  });
+
+  it("rejects a malformed previousResult with 400 INVALID_INPUT rather than passing it through", async () => {
+    const response = await POST(
+      postRequest({ message: "how old is it", previousResult: { garbage: true } }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("INVALID_INPUT");
+    expect(parseAddressFromMessage).not.toHaveBeenCalled();
   });
 
   it("returns 502 when address parsing itself fails", async () => {

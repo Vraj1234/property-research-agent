@@ -142,6 +142,25 @@
   }
 }
 
+/* Agent answer — a follow-up answer grounded in an already-fetched result
+ * (Ticket 7). Reads as "successful, but not a new dossier" — ledger green,
+ * not rust, and no case-file chrome. */
+
+.agent-answer {
+  border-left: 3px solid var(--color-ledger);
+  background: var(--color-ledger-tint);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  max-width: 80%;
+}
+
+.agent-answer p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+
 /* Error note */
 
 .error-note {

@@ -212,16 +212,34 @@ documented limitation — the same trade already made for hydrants. Fire station
 set to 25km to accommodate that observed sparsity; hydrants stay at 3km given their much higher
 expected density in developed areas.
 
-**2026-08-26 — Overpass API calls need explicit Accept/Accept-Encoding/Accept-Language/Sec-Fetch-Mode/User-Agent headers; Node's fetch defaults get HTTP 406 from this endpoint every time.**
-Live-tested and reproduced reliably: the identical query via `curl` or Node's raw `https`
-module returned 200, but Node's `fetch` (undici) — with its automatically-added header set —
-got HTTP 406 ("Not Acceptable") from overpass-api.de's Apache front end on every attempt.
-Bisected by overriding each auto-added header individually (none alone fixed it) and then all
-five together (fixed it twice, consistently) — reads as the WAF fingerprinting undici's
-default header combination as bot-like, not any single header. `queryNearbyNodes()` now sets
-conventional values for all five explicitly. Also hit Overpass's fair-use rate limiting
-firsthand from the volume of debugging requests this took (all round-robin mirror IPs started
-timing out) — a live demonstration of the exact risk PRD.md §9 already flags, not a new one.
+**2026-08-26 — Overpass API calls need explicit Accept/Accept-Encoding/Accept-Language/Sec-Fetch-Mode/User-Agent headers; Node's fetch defaults get HTTP 406 from this endpoint. [Superseded 2026-08-27 — see below: this "fix" is not actually reliable.]**
+Live-tested and reproduced: the identical query via `curl` or Node's raw `https` module
+returned 200, but Node's `fetch` (undici) got HTTP 406 ("Not Acceptable") from overpass-api.de's
+Apache front end. Overriding all five auto-added headers explicitly fixed it twice in a row at
+the time, which read as a confirmed fix — that confidence turned out to be premature; see the
+2026-08-27 entry. Also hit Overpass's fair-use rate limiting from the debugging volume itself
+(all round-robin mirror IPs started timing out) — a live demonstration of the exact risk
+PRD.md §9 already flags, not a new one.
+
+**2026-08-27 — Correction: the Ticket 5 Overpass header fix is not reliable — the same request (including plain `curl`, and Node's raw `https` module with no custom headers at all) now fails intermittently, and my own repeated live testing across three tickets has pushed this IP into a much harder rate-limit/block from Overpass's public instance.**
+Discovered while live-testing Ticket 7 in the browser: the fire station/hydrant fields showed
+"Overpass lookup failed: HTTP 406" — the exact error the Ticket 5 fix was supposed to have
+eliminated. Re-tested the identical header combination that "fixed" it twice on 2026-08-26: got
+406 three times in a row this time. Went further to re-establish a baseline and found even
+`curl` alone (previously 100% reliable) is now inconsistent, and a bare Node `https.request`
+with zero custom headers now fails outright with `ETIMEDOUT`/`ECONNREFUSED` across every
+round-robin mirror IP. This points to two things, not one: (a) the header-based 406 workaround
+was likely never a real fix — more likely a coincidence of which load-balanced mirror server
+happened to answer a given request, since Overpass's public instance fronts multiple servers
+with, apparently, inconsistent WAF behavior; and (b) this project's own cumulative debugging
+traffic (Tickets 5-7) has now earned this IP a real fair-use penalty from Overpass. **Stopped
+further live Overpass testing immediately** rather than deepen the block. Left the explicit
+headers in `overpass.ts` in place (harmless, and still plausibly helps against some mirrors)
+but this should be read as "best-effort, unverified," not "solved." The pipeline's actual
+behavior — an honest null value with a "lookup failed" note, never a crashed request — is
+correct either way and does not depend on this being fixed; Ticket 8 QA should re-assess real
+Overpass hit rates once enough time has passed for any rate-limit to lapse, from a
+different/cleaner network path if possible.
 
 **2026-08-27 — `gpt-4o-mini` (the model discussion.md's cost model was built around) has been deprecated by OpenAI; switched to `gpt-5-nano` for the Ticket 6 address-parsing step.**
 Discovered while starting Ticket 6 — multiple current pricing sources list gpt-4o-mini among

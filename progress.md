@@ -80,12 +80,15 @@ Living tracker. Update checkboxes and Notes as work happens. See `PRD.md` for fu
   PRD.md §5 — a miss is an honest null with a coverage-gap note, same treatment as a genuine
   Overpass failure (different note). Radii: 25km for fire stations (live-tested sparser OSM
   coverage than expected — 0 stations within 8km of a real suburban address), 3km for
-  hydrants. Hit and fixed a real bug: Node's `fetch` got HTTP 406 from Overpass on every call
-  (its default headers look bot-like to Overpass's WAF) while `curl` succeeded — fixed by
-  setting explicit Accept/Accept-Encoding/Accept-Language/Sec-Fetch-Mode/User-Agent headers.
-  Also personally tripped Overpass's fair-use rate limiting from debugging volume — a live
-  instance of the exact risk already logged in PRD.md §9. 14 new unit tests (51 total);
-  `npm run build` clean; live-verified the fix directly against the Overpass API (full
+  hydrants. Hit a real bug: Node's `fetch` got HTTP 406 from Overpass while `curl` succeeded —
+  attempted a fix (explicit Accept/Accept-Encoding/Accept-Language/Sec-Fetch-Mode/User-Agent
+  headers), but **Ticket 7 found this fix is not reliable** — the same 406 recurred, and even
+  `curl` itself became inconsistent, most likely because this project's own cumulative
+  debugging traffic earned the IP a real fair-use penalty from Overpass (see decisions.md
+  2026-08-27). The pipeline's honest-null-on-failure behavior is correct regardless and doesn't
+  depend on this being fixed; treat Overpass reliability as unverified, revisit at Ticket 8 QA.
+  14 new unit tests (51 total); `npm run build` clean; live-verified the (later-disproven) fix
+  directly against the Overpass API at the time (full
   `/api/research` re-verification skipped this round to respect the rate limit cooldown and
   avoid further Parallel.ai spend — worth a quick manual spot-check before Ticket 6).
 
@@ -106,12 +109,29 @@ Living tracker. Update checkboxes and Notes as work happens. See `PRD.md` for fu
   visually confirmed — a browser-automation tooling limitation this session, not a known bug;
   worth a quick manual check.
 
-## Ticket 7 — End-to-end wiring & follow-up Q&A
-- [ ] Orchestrator calls all tools per the source matrix, assembles final result
-- [ ] Honest "not found" state per field — no silent omission, no fabrication
-- [ ] Follow-up question handling: OpenAI answers from already-fetched data, no re-fetching,
+## Ticket 7 — End-to-end wiring & follow-up Q&A ✅ CLOSED 2026-08-27
+- [x] Orchestrator calls all tools per the source matrix, assembles final result — already true
+      as of Tickets 3-5; no changes needed
+- [x] Honest "not found" state per field — no silent omission, no fabrication — already true
+      as of Tickets 3-5; no changes needed
+- [x] Follow-up question handling: OpenAI answers from already-fetched data, no re-fetching,
       no inventing facts not in the result set
-- Notes:
+- Notes: `followUp.ts` — `answerFollowUp(question, result)`, grounded only in `result.fields`,
+  gpt-5-nano (same model as address parsing; gpt-4o-mini is deprecated, see Ticket 6). Wired
+  into `/api/research`: when the message doesn't contain a new address, and a `previousResult`
+  is supplied, it's treated as a follow-up instead of a hard `NO_ADDRESS_FOUND` — no server-side
+  session, so the client resends the last successful result each time (stateless per-request,
+  matching the existing architecture). Response shape changed to a discriminated
+  `ChatResponse = {type:"research"} | {type:"answer"}` envelope. Live-tested 3 real questions
+  before wiring in: an answerable one (correct), a field never researched at all — lot size
+  (honest "not in the data," not a guess), and a field researched but null — mortgagee (honest,
+  cited the actual note) — all three correct on the first try. New `AgentAnswer` component,
+  styled distinctly from both the result card and error states. 7 new unit tests (82 total);
+  build/lint clean; verified live end-to-end in the browser (real lookup → real follow-up →
+  correct grounded answer). Along the way, live-testing surfaced that Ticket 5's Overpass
+  header fix isn't actually reliable and this project's own testing has rate-limited its own
+  IP against Overpass — corrected in decisions.md and Ticket 5's notes above rather than left
+  standing as an overclaimed fix.
 
 ## Ticket 8 — Manual QA, bug fixes, deploy polish
 - [ ] Test against 5+ real addresses across different states
