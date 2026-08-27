@@ -251,4 +251,43 @@ describe("POST /api/research", () => {
       },
     ]);
   });
+
+  it("keeps streaming safely instead of throwing when the client disconnects mid-stream", async () => {
+    // Live-reproduced bug: a client that disconnects (tab closed, fetch
+    // aborted, a client-side timeout) while researchFields is still
+    // running left later onFieldResolved calls trying to enqueue onto an
+    // already-closed stream controller, throwing
+    // `TypeError [ERR_INVALID_STATE]: Controller is already closed`.
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(parseAddressFromMessage).mockResolvedValue("123 Main St");
+    vi.mocked(geocodeAddress).mockResolvedValue(mockGeocode);
+
+    let continueAfterDisconnect: (() => void) | undefined;
+    const secondFieldReported = new Promise<void>((resolveTest) => {
+      vi.mocked(researchFields).mockImplementation(async (_addr, _geo, _opts, onFieldResolved) => {
+        onFieldResolved?.({ field: "yearBuilt", value: 1900, source: "RentCast", confidence: "high" });
+        await new Promise<void>((resolve) => {
+          continueAfterDisconnect = resolve;
+        });
+        // This is the exact moment the original bug threw: reporting a
+        // field after the reader below has already cancelled the stream.
+        onFieldResolved?.({ field: "hvacType", value: "Central", source: "RentCast", confidence: "high" });
+        resolveTest();
+        return { fields: [], notices: [] };
+      });
+    });
+
+    const response = await POST(postRequest({ message: "123 Main St" }));
+    const reader = response.body!.getReader();
+    await reader.read(); // the geocode event
+    await reader.read(); // the first field event
+    await reader.cancel(); // simulates the client disconnecting
+
+    continueAfterDisconnect?.();
+    await secondFieldReported;
+
+    // The real assertion: no unhandled exception, and no error logged for
+    // what should now be a silent no-op.
+    expect(console.error).not.toHaveBeenCalled();
+  });
 });

@@ -82,7 +82,25 @@ function sseLine(event: ResearchStreamEvent): Uint8Array {
 function streamResearch(address: string, geocode: GeocodeResult, deepResearch: boolean): Response {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: ResearchStreamEvent) => controller.enqueue(sseLine(event));
+      // The client can disconnect (tab closed, fetch aborted, a client-side
+      // timeout) at any point while `researchFields` is still running in
+      // the background — `webResearchFallback`/`distanceFields` keep
+      // resolving and calling `onFieldResolved` regardless. Every
+      // `enqueue`/`close` after the browser has gone away throws
+      // `TypeError [ERR_INVALID_STATE]: Controller is already closed` —
+      // live-reproduced by deliberately truncating a request mid-stream.
+      // `closed` plus this try/catch makes every send after that a safe
+      // no-op instead of an unhandled exception.
+      let closed = false;
+      const send = (event: ResearchStreamEvent) => {
+        if (closed) return;
+        try {
+          controller.enqueue(sseLine(event));
+        } catch {
+          closed = true;
+        }
+      };
+
       send({ type: "geocode", geocode });
 
       try {
@@ -107,7 +125,14 @@ function streamResearch(address: string, geocode: GeocodeResult, deepResearch: b
           message: "Unexpected server error while researching this address.",
         });
       } finally {
-        controller.close();
+        if (!closed) {
+          try {
+            controller.close();
+          } catch {
+            // The client disconnected in the narrow window between the
+            // last send() and this close() — nothing left to do.
+          }
+        }
       }
     },
   });
