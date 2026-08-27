@@ -5,17 +5,21 @@ vi.mock("@/lib/addressParser", async () => {
   const actual = await vi.importActual<typeof import("@/lib/addressParser")>("@/lib/addressParser");
   return { ...actual, parseAddressFromMessage: vi.fn() };
 });
-vi.mock("@/lib/orchestrator", () => ({ researchAddress: vi.fn() }));
+vi.mock("@/lib/geocode", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/geocode")>("@/lib/geocode");
+  return { ...actual, geocodeAddress: vi.fn() };
+});
+vi.mock("@/lib/orchestrator", () => ({ researchFields: vi.fn() }));
 vi.mock("@/lib/followUp", async () => {
   const actual = await vi.importActual<typeof import("@/lib/followUp")>("@/lib/followUp");
   return { ...actual, answerFollowUp: vi.fn() };
 });
 
 import { parseAddressFromMessage, AddressParseError } from "@/lib/addressParser";
-import { researchAddress } from "@/lib/orchestrator";
+import { geocodeAddress, GeocodingError } from "@/lib/geocode";
+import { researchFields } from "@/lib/orchestrator";
 import { answerFollowUp, FollowUpError } from "@/lib/followUp";
-import { GeocodingError } from "@/lib/geocode";
-import type { ResearchResult } from "@/lib/types";
+import type { FieldResult, GeocodeResult, ResearchResult, ResearchStreamEvent } from "@/lib/types";
 import { POST } from "./route";
 
 function postRequest(body: unknown): NextRequest {
@@ -25,12 +29,37 @@ function postRequest(body: unknown): NextRequest {
   });
 }
 
+/** Reads a `Response` whose body is an SSE stream (the success path, since
+ * Ticket 9) into the ordered list of decoded `ResearchStreamEvent`s. */
+async function readSseEvents(response: Response): Promise<ResearchStreamEvent[]> {
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const events: ResearchStreamEvent[] = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let separatorIndex: number;
+    while ((separatorIndex = buffer.indexOf("\n\n")) !== -1) {
+      const rawEvent = buffer.slice(0, separatorIndex);
+      buffer = buffer.slice(separatorIndex + 2);
+      const dataLine = rawEvent.split("\n").find((line) => line.startsWith("data:"));
+      if (dataLine) events.push(JSON.parse(dataLine.slice(5).trim()));
+    }
+  }
+
+  return events;
+}
+
+const mockGeocode: GeocodeResult = { latitude: 38.9, longitude: -77.03, matchedAddress: "1600 PENNSYLVANIA AVE NW" };
+
 const mockResult: ResearchResult = {
   input: { address: "1600 Pennsylvania Ave NW, Washington, DC 20500", deepResearch: false },
-  geocode: { latitude: 38.9, longitude: -77.03, matchedAddress: "1600 PENNSYLVANIA AVE NW" },
-  fields: [
-    { field: "yearBuilt", value: 1814, source: "RentCast", confidence: "high" },
-  ],
+  geocode: mockGeocode,
+  fields: [{ field: "yearBuilt", value: 1814, source: "RentCast", confidence: "high" }],
   notices: [],
 };
 
@@ -40,19 +69,41 @@ describe("POST /api/research", () => {
     vi.clearAllMocks();
   });
 
-  it("parses the message into an address, runs the research pipeline, and wraps it as type: research", async () => {
+  it("parses the message, geocodes it, and streams a geocode event, each field, then a done event", async () => {
     vi.mocked(parseAddressFromMessage).mockResolvedValue("1600 Pennsylvania Ave NW, Washington, DC 20500");
-    vi.mocked(researchAddress).mockResolvedValue(mockResult);
+    vi.mocked(geocodeAddress).mockResolvedValue(mockGeocode);
+    const yearBuilt: FieldResult = { field: "yearBuilt", value: 1814, source: "RentCast", confidence: "high" };
+    vi.mocked(researchFields).mockImplementation(async (_address, _geocode, _options, onFieldResolved) => {
+      onFieldResolved?.(yearBuilt);
+      return { fields: [yearBuilt], notices: [] };
+    });
 
     const response = await POST(postRequest({ message: "look up the white house for me" }));
-    const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ type: "research", result: mockResult });
+    expect(response.headers.get("Content-Type")).toContain("text/event-stream");
+    const events = await readSseEvents(response);
+    expect(events).toEqual([
+      { type: "geocode", geocode: mockGeocode },
+      { type: "field", field: yearBuilt },
+      {
+        type: "done",
+        result: {
+          input: { address: "1600 Pennsylvania Ave NW, Washington, DC 20500", deepResearch: false },
+          geocode: mockGeocode,
+          fields: [yearBuilt],
+          notices: [],
+        },
+      },
+    ]);
     expect(parseAddressFromMessage).toHaveBeenCalledWith("look up the white house for me");
-    expect(researchAddress).toHaveBeenCalledWith("1600 Pennsylvania Ave NW, Washington, DC 20500", {
-      deepResearch: undefined,
-    });
+    expect(geocodeAddress).toHaveBeenCalledWith("1600 Pennsylvania Ave NW, Washington, DC 20500");
+    expect(researchFields).toHaveBeenCalledWith(
+      "1600 Pennsylvania Ave NW, Washington, DC 20500",
+      mockGeocode,
+      { deepResearch: false },
+      expect.any(Function),
+    );
   });
 
   it("returns 422 NO_ADDRESS_FOUND when no address is found and there's no previous result to fall back on", async () => {
@@ -63,7 +114,7 @@ describe("POST /api/research", () => {
 
     expect(response.status).toBe(422);
     expect(body.error.code).toBe("NO_ADDRESS_FOUND");
-    expect(researchAddress).not.toHaveBeenCalled();
+    expect(geocodeAddress).not.toHaveBeenCalled();
     expect(answerFollowUp).not.toHaveBeenCalled();
   });
 
@@ -77,9 +128,10 @@ describe("POST /api/research", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toContain("application/json");
     expect(body).toEqual({ type: "answer", answer: "It was built in 1814." });
     expect(answerFollowUp).toHaveBeenCalledWith("how old is the house", mockResult);
-    expect(researchAddress).not.toHaveBeenCalled();
+    expect(geocodeAddress).not.toHaveBeenCalled();
   });
 
   it("returns 502 when follow-up answering itself fails", async () => {
@@ -120,11 +172,18 @@ describe("POST /api/research", () => {
 
   it("threads deepResearch through to the pipeline", async () => {
     vi.mocked(parseAddressFromMessage).mockResolvedValue("123 Main St");
-    vi.mocked(researchAddress).mockResolvedValue(mockResult);
+    vi.mocked(geocodeAddress).mockResolvedValue(mockGeocode);
+    vi.mocked(researchFields).mockResolvedValue({ fields: [], notices: [] });
 
-    await POST(postRequest({ message: "123 Main St", deepResearch: true }));
+    const response = await POST(postRequest({ message: "123 Main St", deepResearch: true }));
+    await readSseEvents(response); // drain the stream so the handler finishes
 
-    expect(researchAddress).toHaveBeenCalledWith("123 Main St", { deepResearch: true });
+    expect(researchFields).toHaveBeenCalledWith(
+      "123 Main St",
+      mockGeocode,
+      { deepResearch: true },
+      expect.any(Function),
+    );
   });
 
   it("returns 400 INVALID_INPUT for an empty message", async () => {
@@ -149,25 +208,47 @@ describe("POST /api/research", () => {
     expect(body.error.code).toBe("INVALID_INPUT");
   });
 
-  it("maps a geocoding NO_MATCH to 422 and an UPSTREAM_ERROR to 502", async () => {
+  it("maps a geocoding NO_MATCH to 422 and an UPSTREAM_ERROR to 502, before any streaming starts", async () => {
     vi.mocked(parseAddressFromMessage).mockResolvedValue("zzqxx not a real place");
-    vi.mocked(researchAddress).mockRejectedValue(new GeocodingError("NO_MATCH", "Could not geocode."));
+    vi.mocked(geocodeAddress).mockRejectedValue(new GeocodingError("NO_MATCH", "Could not geocode."));
 
     const response = await POST(postRequest({ message: "zzqxx not a real place" }));
     const body = await response.json();
 
     expect(response.status).toBe(422);
     expect(body.error.code).toBe("NO_MATCH");
+    expect(researchFields).not.toHaveBeenCalled();
   });
 
-  it("returns 500 for an unexpected pipeline error", async () => {
+  it("returns 500 for an unexpected geocoding failure, before any streaming starts", async () => {
     vi.mocked(parseAddressFromMessage).mockResolvedValue("123 Main St");
-    vi.mocked(researchAddress).mockRejectedValue(new Error("boom"));
+    vi.mocked(geocodeAddress).mockRejectedValue(new Error("boom"));
 
     const response = await POST(postRequest({ message: "123 Main St" }));
     const body = await response.json();
 
     expect(response.status).toBe(500);
     expect(body.error.code).toBe("UPSTREAM_ERROR");
+    expect(researchFields).not.toHaveBeenCalled();
+  });
+
+  it("reports an unexpected mid-stream pipeline error as a stream error event, not an HTTP status (response already committed to 200)", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(parseAddressFromMessage).mockResolvedValue("123 Main St");
+    vi.mocked(geocodeAddress).mockResolvedValue(mockGeocode);
+    vi.mocked(researchFields).mockRejectedValue(new Error("boom"));
+
+    const response = await POST(postRequest({ message: "123 Main St" }));
+
+    expect(response.status).toBe(200);
+    const events = await readSseEvents(response);
+    expect(events).toEqual([
+      { type: "geocode", geocode: mockGeocode },
+      {
+        type: "error",
+        code: "UPSTREAM_ERROR",
+        message: "Unexpected server error while researching this address.",
+      },
+    ]);
   });
 });

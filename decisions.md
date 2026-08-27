@@ -299,3 +299,60 @@ to check against, since every distance lookup this round hit the Overpass outage
 are flagged as explicit follow-ups for whoever picks this up next, once Overpass access
 recovers and the user has confirmed the Vercel dashboard directly — closing the ticket reflects
 "everything checkable from this side was checked," not "everything is verified green."
+
+**2026-08-27 — Ticket 9: `/api/research` streams each field to the client via Server-Sent Events as it individually resolves, instead of returning one JSON blob after all 9 are done.**
+Requests can legitimately take 15s to 5+ minutes (deep research mode), and QA (Ticket 8) already
+measured real runs up to 98.6s — a silent wait that long reads as broken, not working. Chose SSE
+over polling or WebSockets: it's a plain, one-directional server→client push (exactly what's
+needed here), needs no new dependency (native `ReadableStream`/`Response`, confirmed supported by
+this Next.js version's own route-handler docs), and survives Vercel's Node.js function runtime
+without extra config beyond `maxDuration`. `EventSource` was ruled out since it can't send a POST
+body — the client instead reads `response.body` manually via a small `readSseEvents` generator
+(`src/lib/sseClient.ts`). Geocoding still happens *before* the stream starts, so a geocode miss or
+upstream failure keeps returning a normal HTTP status unchanged from Ticket 2; only a genuinely
+unexpected failure *after* streaming has committed to 200 has to surface as an in-stream `"error"`
+event instead of a status code — documented directly in `ResearchStreamEvent`'s own type comment
+so this isn't a surprise later. Also added `export const maxDuration = 300` to the route — a
+real, previously-unaddressed gap Ticket 8 didn't flag: streaming fixes the user-facing silent
+wait, but the serverless function itself still has to stay alive for the same 3.5-minute
+`deepResearch` ceiling Ticket 4 already measured, and nothing was setting that before.
+
+**2026-08-27 — Field-level streaming granularity comes from wrapping each already-independent `Promise.all` branch in `webResearchFallback`/`distanceFields` with a `.then(onFieldResolved)`, not from restructuring the pipeline.**
+Every one of the 9 fields was already resolved by its own independent promise inside a
+`Promise.all` (Ticket 4/5) — the only change needed was reporting each one the moment *it*
+settles instead of waiting for the whole `Promise.all` to finish. A field RentCast already had
+reports back almost immediately (no Parallel.ai call happens); a field that needs Parallel.ai
+reports only once that real call returns. Deliberately no intermediate/provisional value is ever
+shown for a field mid-flight — PRD.md §8's "never a guess" bar applies just as much to a
+half-finished UI state as to a final one, so a row is either "still being investigated" or
+carries its one true final answer, never something in between that later flips.
+
+**2026-08-27 — Chat UI progressive-reveal direction: "Ledger Ink Reveal" — reused the existing wax-seal pulse animation (scaled down) per pending row instead of a new loading pattern, plus a live "N of 9 leads confirmed" progress bar and elapsed-time-bucketed reassurance copy ("Pulling records…" → "Cross-checking public listings…" → a digging/deep-research-specific message past 60s).**
+Chose this over two other brainstormed directions — a "redacted case file" scanner-sweep effect,
+and a pinned "evidence board" of flip-card fields — because it required no new visual metaphor:
+it reuses `LoadingIndicator`'s existing seal animation and the result card's existing field-row
+grid almost unchanged, so it shipped fastest with the least risk of clashing with the
+already-established Property Dossier system, while the evidence-board direction would have meant
+replacing the `dl`/`FieldRow` structure entirely for a purely cosmetic gain. Per-row pending copy
+names the actual source about to be checked (`FIELD_PENDING_COPY` in `formatFieldValue.ts`,
+mirroring PRD.md §5's field→source matrix) rather than generic "loading" text — real specificity
+instead of a decorative spinner. The stamp also now flips color with state: rust "Investigating"
+while streaming (tokens.css already defines rust as the "active state" accent) to ledger-green
+"Filed" once the `done` event lands — confirmed live in the browser end-to-end, including the
+stamp/tally transition at the moment streaming completes.
+
+**2026-08-27 — `ChatResponse`'s `{type: "research"}` variant was removed from `types.ts`; it's now just the follow-up-answer shape.**
+A direct consequence of the streaming change — `/api/research` never again returns a whole
+`ResearchResult` as a single JSON body for a newly-researched address (that now always streams
+as `ResearchStreamEvent`s), so keeping the old union member around would have described a
+response shape the server can no longer produce. Updated rather than left stale, per the same
+"don't silently omit a gap" standard applied to the data itself.
+
+**2026-08-27 — Ticket 9's live end-to-end test (350 Fifth Avenue, the Empire State Building — chosen because Ticket 8's QA data shows it has no RentCast record, so every field genuinely exercises the Parallel.ai fallback path and streams in over ~40s) reconfirmed Overpass is still blocked from this network, unchanged from Tickets 5/7/8.**
+Not a regression from this ticket — both distance fields failed with the identical
+`"Could not reach the OpenStreetMap Overpass API"` note documented since 2026-08-27 earlier in
+this log. Included here only because the live run is also the first real confirmation that a
+field which fails fast (Overpass, this network) and fields that take tens of seconds
+(Parallel.ai) interleave correctly in the stream — the UI showed the two distance rows resolving
+to "Not found" almost immediately while bed/bath/sqft/owner/tax were still pending, exactly as
+designed, with no visual glitch from the mixed timing.

@@ -89,8 +89,19 @@ async function resolveDistanceField(
  * from a live public API + geometry, or honestly not found. Independent of
  * RentCast/Parallel; only needs the geocoded point, so the orchestrator can
  * run this in parallel with the RentCast pipeline (PRD.md §8).
+ *
+ * `onFieldResolved`, when given, is called with each of the two fields the
+ * moment its own Overpass query settles (Ticket 9) — these two queries are
+ * usually fast, but reporting each independently rather than waiting for
+ * both keeps this consistent with the property-field pipeline's streaming.
  */
-export async function distanceFields(latitude: number, longitude: number): Promise<FieldResult[]> {
+export async function distanceFields(
+  latitude: number,
+  longitude: number,
+  onFieldResolved?: (field: FieldResult) => void,
+): Promise<FieldResult[]> {
+  const notify = onFieldResolved ?? (() => {});
+
   return Promise.all([
     resolveDistanceField(
       {
@@ -102,7 +113,10 @@ export async function distanceFields(latitude: number, longitude: number): Promi
       },
       latitude,
       longitude,
-    ),
+    ).then((field) => {
+      notify(field);
+      return field;
+    }),
     resolveDistanceField(
       {
         field: "nearestFireHydrantDistance",
@@ -113,6 +127,9 @@ export async function distanceFields(latitude: number, longitude: number): Promi
       },
       latitude,
       longitude,
-    ),
+    ).then((field) => {
+      notify(field);
+      return field;
+    }),
   ]);
 }

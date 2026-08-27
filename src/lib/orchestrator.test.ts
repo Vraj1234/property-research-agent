@@ -12,7 +12,7 @@ import { geocodeAddress } from "./geocode";
 import { getPropertyRecord, RentCastError } from "./rentcast";
 import { webResearchFallback } from "./webResearchFallback";
 import { distanceFields } from "./distanceFields";
-import { researchAddress } from "./orchestrator";
+import { researchAddress, researchFields } from "./orchestrator";
 import type { FieldResult } from "./types";
 
 const mockDistanceFields: FieldResult[] = [
@@ -72,8 +72,9 @@ describe("researchAddress", () => {
       ]),
       "2024-11-18T00:00:00.000Z",
       { deepResearch: false },
+      undefined,
     );
-    expect(distanceFields).toHaveBeenCalledWith(mockGeocode.latitude, mockGeocode.longitude);
+    expect(distanceFields).toHaveBeenCalledWith(mockGeocode.latitude, mockGeocode.longitude, undefined);
   });
 
   it("merges distance fields alongside the RentCast/Parallel.ai fields, running both in parallel", async () => {
@@ -84,7 +85,7 @@ describe("researchAddress", () => {
     const fieldKeys = result.fields.map((f) => f.field);
     expect(fieldKeys).toContain("nearestFireStationDistance");
     expect(fieldKeys).toContain("nearestFireHydrantDistance");
-    expect(distanceFields).toHaveBeenCalledWith(mockGeocode.latitude, mockGeocode.longitude);
+    expect(distanceFields).toHaveBeenCalledWith(mockGeocode.latitude, mockGeocode.longitude, undefined);
   });
 
   it("threads deepResearch through to the fallback layer and adds a latency notice", async () => {
@@ -101,6 +102,7 @@ describe("researchAddress", () => {
       expect.any(Array),
       null,
       { deepResearch: true },
+      undefined,
     );
   });
 
@@ -140,5 +142,53 @@ describe("researchAddress", () => {
     await expect(researchAddress("bad address")).rejects.toThrow("geocode boom");
     expect(webResearchFallback).not.toHaveBeenCalled();
     expect(distanceFields).not.toHaveBeenCalled();
+  });
+
+  describe("researchFields (Ticket 9 — progressive streaming)", () => {
+    it("forwards the same onFieldResolved callback to both the property and distance pipelines", async () => {
+      vi.mocked(getPropertyRecord).mockResolvedValue(null);
+      const onFieldResolved = vi.fn();
+
+      await researchFields("some address", mockGeocode, {}, onFieldResolved);
+
+      expect(webResearchFallback).toHaveBeenCalledWith(
+        "some address",
+        expect.any(Array),
+        null,
+        { deepResearch: false },
+        onFieldResolved,
+      );
+      expect(distanceFields).toHaveBeenCalledWith(
+        mockGeocode.latitude,
+        mockGeocode.longitude,
+        onFieldResolved,
+      );
+    });
+
+    it("reports each field to the caller as soon as the underlying pipeline reports it, before the whole call resolves", async () => {
+      vi.mocked(getPropertyRecord).mockResolvedValue(null);
+      const propertyField: FieldResult = { field: "ownerName", value: ["Jane Doe"], source: "Parallel.ai", confidence: "medium" };
+      const distanceField: FieldResult = mockDistanceFields[0];
+      vi.mocked(webResearchFallback).mockImplementation(async (_addr, _base, _sale, _opts, onFieldResolved) => {
+        onFieldResolved?.(propertyField);
+        return [propertyField];
+      });
+      vi.mocked(distanceFields).mockImplementation(async (_lat, _lon, onFieldResolved) => {
+        onFieldResolved?.(distanceField);
+        return [distanceField];
+      });
+      const seen: FieldResult[] = [];
+
+      const { fields } = await researchFields("some address", mockGeocode, {}, (field) => seen.push(field));
+
+      expect(seen).toEqual(expect.arrayContaining([propertyField, distanceField]));
+      expect(fields).toEqual(expect.arrayContaining([propertyField, distanceField]));
+    });
+
+    it("works with no callback supplied at all", async () => {
+      vi.mocked(getPropertyRecord).mockResolvedValue(null);
+
+      await expect(researchFields("some address", mockGeocode)).resolves.toBeDefined();
+    });
   });
 });

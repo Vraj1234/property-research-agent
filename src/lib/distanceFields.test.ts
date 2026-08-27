@@ -70,4 +70,21 @@ describe("distanceFields", () => {
       expect(field.note).toMatch(/overpass lookup failed/i);
     }
   });
+
+  describe("onFieldResolved (Ticket 9 — progressive streaming)", () => {
+    it("reports both fields exactly once, matching the final returned array", async () => {
+      vi.mocked(queryNearbyNodes).mockResolvedValue([{ lat: LAT, lon: LON, name: "X" }]);
+      const reported: string[] = [];
+
+      const result = await distanceFields(LAT, LON, (field) => reported.push(field.field));
+
+      expect(reported.sort()).toEqual(result.map((f) => f.field).sort());
+    });
+
+    it("works with no callback supplied at all", async () => {
+      vi.mocked(queryNearbyNodes).mockResolvedValue([]);
+
+      await expect(distanceFields(LAT, LON)).resolves.toBeDefined();
+    });
+  });
 });

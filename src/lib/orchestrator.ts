@@ -1,8 +1,8 @@
 import { distanceFields } from "./distanceFields";
 import { geocodeAddress } from "./geocode";
 import { getPropertyRecord, RentCastError, type RentCastPropertyRecord } from "./rentcast";
-import { webResearchFallback } from "./webResearchFallback";
-import type { Confidence, FieldResult, PropertyFieldKey, ResearchResult } from "./types";
+import { webResearchFallback, type FieldResolvedCallback } from "./webResearchFallback";
+import type { Confidence, FieldResult, GeocodeResult, PropertyFieldKey, ResearchResult } from "./types";
 
 /** Every field this ticket sources from RentCast. Mortgagee is intentionally
  * absent here — RentCast never returns it, so it's left out of `baseFields`
@@ -76,6 +76,7 @@ export interface ResearchAddressOptions {
 async function getPropertyFields(
   address: string,
   deepResearch: boolean,
+  onFieldResolved?: FieldResolvedCallback,
 ): Promise<FieldResult[]> {
   let baseFields: FieldResult[];
   let lastSaleDate: string | null = null;
@@ -93,30 +94,35 @@ async function getPropertyFields(
     baseFields = notFoundFields(`RentCast lookup failed: ${message}`);
   }
 
-  return webResearchFallback(address, baseFields, lastSaleDate, { deepResearch });
+  return webResearchFallback(address, baseFields, lastSaleDate, { deepResearch }, onFieldResolved);
+}
+
+export interface ResearchFieldsResult {
+  fields: FieldResult[];
+  notices: string[];
 }
 
 /**
- * Deterministic pipeline entry point — no LLM in this loop (PRD.md §6).
- * Geocoding hard-fails the whole request on miss (unchanged from Ticket 2);
- * a RentCast lookup failure does not — it degrades to honest "not found"
- * fields that the fallback layer still gets a chance to fill via
- * Parallel.ai, rather than taking down a request that already successfully
- * geocoded (PRD.md §8: never a silent omission, but also never a scary 500
- * over one provider's outage). The RentCast/Parallel.ai pipeline and the
- * fire station/hydrant distance lookups run in parallel (PRD.md §8) since
- * neither depends on the other — both only need the geocoded point.
+ * Runs the RentCast/Parallel.ai pipeline and the fire station/hydrant
+ * distance lookups against an already-geocoded point, in parallel (PRD.md
+ * §8) since neither depends on the other. Split out from `researchAddress`
+ * (Ticket 9) so a caller that wants to stream progress — `/api/research`'s
+ * route handler — can supply `onFieldResolved` and get each of the 9 fields
+ * the moment it individually settles, instead of waiting for all of them.
+ * `researchAddress` below is the non-streaming convenience wrapper around
+ * this same logic.
  */
-export async function researchAddress(
+export async function researchFields(
   address: string,
+  geocode: GeocodeResult,
   options: ResearchAddressOptions = {},
-): Promise<ResearchResult> {
+  onFieldResolved?: FieldResolvedCallback,
+): Promise<ResearchFieldsResult> {
   const deepResearch = options.deepResearch ?? false;
-  const geocode = await geocodeAddress(address);
 
   const [propertyFields, geometryFields] = await Promise.all([
-    getPropertyFields(address, deepResearch),
-    distanceFields(geocode.latitude, geocode.longitude),
+    getPropertyFields(address, deepResearch, onFieldResolved),
+    distanceFields(geocode.latitude, geocode.longitude, onFieldResolved),
   ]);
 
   const notices: string[] = [];
@@ -126,10 +132,29 @@ export async function researchAddress(
     );
   }
 
+  return { fields: [...propertyFields, ...geometryFields], notices };
+}
+
+/**
+ * Deterministic pipeline entry point — no LLM in this loop (PRD.md §6).
+ * Geocoding hard-fails the whole request on miss (unchanged from Ticket 2);
+ * a RentCast lookup failure does not — it degrades to honest "not found"
+ * fields that the fallback layer still gets a chance to fill via
+ * Parallel.ai, rather than taking down a request that already successfully
+ * geocoded (PRD.md §8: never a silent omission, but also never a scary 500
+ * over one provider's outage).
+ */
+export async function researchAddress(
+  address: string,
+  options: ResearchAddressOptions = {},
+): Promise<ResearchResult> {
+  const geocode = await geocodeAddress(address);
+  const { fields, notices } = await researchFields(address, geocode, options);
+
   return {
-    input: { address, deepResearch },
+    input: { address, deepResearch: options.deepResearch ?? false },
     geocode,
-    fields: [...propertyFields, ...geometryFields],
+    fields,
     notices,
   };
 }

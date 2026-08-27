@@ -69,13 +69,15 @@ export interface ResearchResult {
 }
 
 /**
- * POST /api/research's success shape (Ticket 7). A message either contains
- * a new address to research, or — when it doesn't and a `previousResult`
- * was supplied — is treated as a follow-up question about that result
- * (PRD.md §4/§6: answered from already-fetched data only, never re-fetched,
- * never fabricated beyond what's in `fields`).
+ * POST /api/research's success shape for a follow-up-question turn (Ticket
+ * 7): the message didn't contain a new address, and a `previousResult` was
+ * supplied, so it's answered from already-fetched data only — never
+ * re-fetched, never fabricated beyond what's in `fields` (PRD.md §4/§6).
+ * A turn that *does* find a new address to research streams progressively
+ * instead, as `ResearchStreamEvent`s (Ticket 9) — it never returns this
+ * shape as a single JSON body.
  */
-export type ChatResponse = { type: "research"; result: ResearchResult } | { type: "answer"; answer: string };
+export type ChatResponse = { type: "answer"; answer: string };
 
 export type ApiErrorCode = "INVALID_INPUT" | "NO_MATCH" | "NO_ADDRESS_FOUND" | "UPSTREAM_ERROR";
 
@@ -85,3 +87,22 @@ export interface ApiErrorBody {
     message: string;
   };
 }
+
+/**
+ * Server-Sent Events emitted by POST /api/research while it researches a
+ * newly-found address (Ticket 9). Requests can take up to several minutes
+ * (deep research mode) — streaming each field as it individually resolves,
+ * instead of one silent wait followed by a single JSON blob, is what lets
+ * the UI show real progress instead of a generic spinner.
+ *
+ * Geocoding happens *before* this stream starts (see route.ts), so a
+ * geocoding failure still surfaces as a normal HTTP error status, never as
+ * an "error" event. Once the stream has started the response is already
+ * committed to 200, so any later unexpected failure has to be reported as
+ * an "error" event instead of a status code.
+ */
+export type ResearchStreamEvent =
+  | { type: "geocode"; geocode: GeocodeResult }
+  | { type: "field"; field: FieldResult }
+  | { type: "done"; result: ResearchResult }
+  | { type: "error"; code: ApiErrorCode; message: string };
