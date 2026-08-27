@@ -14,6 +14,21 @@ export const FIELD_LABELS: Record<PropertyFieldKey, string> = {
   nearestFireHydrantDistance: "Nearest Fire Hydrant",
 };
 
+/** What a row shows while it's still pending (Ticket 9) — names the actual
+ * source being checked per PRD.md §5's field→source matrix, not generic
+ * flavor text, so it reads as real work rather than a decorative spinner. */
+export const FIELD_PENDING_COPY: Record<PropertyFieldKey, string> = {
+  bedBathCount: "Checking RentCast, cross-referencing recent listings…",
+  squareFootage: "Checking RentCast, cross-referencing recent listings…",
+  yearBuilt: "Checking assessor records…",
+  ownerName: "Searching public ownership records…",
+  mortgagee: "Researching lender records — this one can take a few minutes…",
+  hvacType: "Checking property records…",
+  propertyTaxAmount: "Checking assessor tax records…",
+  nearestFireStationDistance: "Querying OpenStreetMap…",
+  nearestFireHydrantDistance: "Querying OpenStreetMap…",
+};
+
 const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
 const CURRENCY_FORMAT = new Intl.NumberFormat("en-US", {
   style: "currency",

@@ -204,12 +204,23 @@
   transform: rotate(-6deg);
   opacity: 0.8;
   mix-blend-mode: multiply;
+  transition:
+    color var(--duration-normal) var(--ease-out-expo),
+    border-color var(--duration-normal) var(--ease-out-expo);
 }
 
 @media (prefers-color-scheme: dark) {
   .result-card__stamp {
     mix-blend-mode: normal;
   }
+}
+
+/* While a case is still streaming, the stamp reads "Investigating" in rust
+ * (tokens.css: rust = active/CTA state) instead of ledger green's "settled"
+ * meaning — a quiet but constant signal that work is actually happening. */
+.result-card[data-streaming="true"] .result-card__stamp {
+  color: var(--color-rust);
+  border-color: var(--color-rust);
 }
 
 .result-card__header {
@@ -240,6 +251,43 @@
   font-family: var(--font-data);
   font-size: var(--text-xs);
   color: var(--color-ink-muted);
+}
+
+/* Live progress while streaming (Ticket 9) — a ledger-green fill on a
+ * paper-line track, plus elapsed-time-aware reassurance copy underneath so
+ * a multi-minute wait reads as "working," never "stuck." */
+.result-card__progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.result-card__progress-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-paper-line);
+  overflow: hidden;
+}
+
+.result-card__progress-fill {
+  height: 100%;
+  background: var(--color-rust);
+  border-radius: inherit;
+  transition: width var(--duration-normal) var(--ease-out-expo);
+}
+
+.result-card__elapsed {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--color-ink-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .result-card__progress-fill {
+    transition: none;
+  }
 }
 
 .result-card__notices {
@@ -356,6 +404,59 @@
   max-width: 46ch;
 }
 
+/* Pending row — "actively being investigated," not a generic spinner
+ * (Ticket 9). Reuses the same wax-seal pulse as LoadingIndicator, scaled
+ * down to sit inline with the row's flavor copy naming the real source
+ * being checked (formatFieldValue.ts: FIELD_PENDING_COPY). */
+.field-row[data-pending="true"] .field-row__value-group {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.field-row__seal {
+  position: relative;
+  width: 1.1rem;
+  height: 0.32rem;
+  flex-shrink: 0;
+}
+
+.field-row__seal span {
+  position: absolute;
+  top: 0;
+  width: 0.32rem;
+  height: 0.32rem;
+  border-radius: 50%;
+  background: var(--color-rust);
+  animation: seal-pulse 1.2s var(--ease-out-expo) infinite;
+}
+
+.field-row__seal span:nth-child(1) {
+  left: 0;
+  animation-delay: 0s;
+}
+.field-row__seal span:nth-child(2) {
+  left: 0.42rem;
+  animation-delay: 0.15s;
+}
+.field-row__seal span:nth-child(3) {
+  left: 0.84rem;
+  animation-delay: 0.3s;
+}
+
+.field-row__pending-copy {
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--color-ink-faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field-row__seal span {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
 /* Message input */
 
 .message-input {
@@ -443,8 +544,16 @@
   align-items: flex-end;
 }
 
-.message-input textarea {
+/* Address autocomplete (Ticket 10) — the suggestion list is positioned
+ * relative to this wrapper, not the textarea itself, so it isn't clipped by
+ * the textarea's own box. */
+.address-combobox {
+  position: relative;
   flex: 1;
+}
+
+.message-input textarea {
+  width: 100%;
   resize: none;
   border: 1px solid var(--color-paper-line);
   border-radius: var(--radius-md);
@@ -460,6 +569,36 @@
 .message-input textarea:focus-visible {
   outline: 2px solid var(--color-rust);
   outline-offset: 1px;
+}
+
+.address-combobox__list {
+  position: absolute;
+  bottom: calc(100% + var(--space-2));
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  background: var(--color-paper-raised);
+  border: 1px solid var(--color-paper-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  max-height: 14rem;
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.address-combobox__option {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.address-combobox__option[data-active="true"] {
+  background: var(--color-ledger-tint);
+  color: var(--color-ledger-strong);
 }
 
 .message-input button {

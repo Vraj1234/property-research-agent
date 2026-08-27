@@ -159,6 +159,75 @@ Living tracker. Update checkboxes and Notes as work happens. See `PRD.md` for fu
   fully green — the map spot-check and live-deploy confirmation are real open items for
   whoever picks this up next once Overpass recovers and the user has checked Vercel.
 
+## Ticket 9 — Progressive field-streaming UX ✅ CLOSED 2026-08-27
+- [x] `/api/research` streams each of the 9 fields to the client via Server-Sent Events as it
+      individually resolves, instead of one JSON response after all 9 are done
+- [x] Result card shows all 9 rows immediately in a "searching" state, each transitioning to
+      found/not-found independently and out of order as the stream reports it
+- [x] Per-row pending state names the real source being checked (RentCast/Parallel.ai/OpenStreetMap)
+      rather than a generic spinner; live progress tally + elapsed-time-aware reassurance copy
+- [x] `prefers-reduced-motion` respected (existing seal/reveal animations already handled this;
+      extended to the new pending-seal and progress-bar transitions)
+- Notes: Brainstormed 3 directions via the frontend-design skill (redacted case file, evidence
+  pinboard, ledger ink reveal); user chose "Ledger Ink Reveal" for reusing the existing design
+  system with lowest risk — see decisions.md. Backend: `webResearchFallback`/`distanceFields`
+  gained an optional `onFieldResolved` callback fired the moment each already-independent
+  `Promise.all` branch settles (no pipeline restructuring needed); orchestrator split into
+  `researchFields` (streamable) + `researchAddress` (thin non-streaming wrapper, kept for tests).
+  Route handler geocodes outside the stream (so a geocode miss/failure still returns a normal
+  HTTP status, unchanged from Ticket 2) and only switches to `text/event-stream` once an address
+  is confirmed; added `export const maxDuration = 300` since deep research's ~3.5 min ceiling
+  (Ticket 4) was never actually covered by a Vercel function timeout before this. Frontend: new
+  `LiveField`/`liveField.ts` model (pending vs. resolved, no provisional in-between values —
+  PRD.md §8's "never a guess" bar applies to a half-finished UI too), a small `sseClient.ts`
+  reader (native `fetch`/`ReadableStream`, no new dependency — `EventSource` can't do POST),
+  `ResultCard`/`FieldRow` rewritten to render both the live-streaming and settled states through
+  the same markup. 22 new unit tests (104 total); `npm run build`, lint, and `tsc --noEmit` all
+  clean. Live-verified end-to-end in the browser against 350 Fifth Avenue (Empire State
+  Building — chosen since Ticket 8's QA showed it has no RentCast record, so every field
+  genuinely exercises the slower Parallel.ai path): watched all 9 rows go pending → resolve
+  independently out of order over ~40s, progress bar and elapsed copy advance correctly, the
+  stamp flip rust "Investigating" → ledger "Filed" exactly when the `done` event landed, and a
+  follow-up question afterward still answered correctly grounded in the streamed result — no
+  console errors. Confirmed Overpass is still blocked from this network (unchanged since
+  Tickets 5/7/8, not a regression here) — both distance fields resolved to an honest "Not
+  found" quickly, which usefully also proved fast-failing and slow-resolving fields interleave
+  correctly in the UI.
+
+## Ticket 10 — Address autocomplete ✅ CLOSED 2026-08-27
+- [x] `GET /api/autocomplete?q=` — free, no-API-key US address suggestions via Photon
+- [x] Message input shows a live dropdown of suggestions as the user types, selectable by
+      keyboard (arrow keys + Enter) or mouse, without submitting the form
+- [x] A too-short query or an upstream Photon failure both degrade to no suggestions rather
+      than an error — autocomplete never blocks typing or submitting a full address by hand
+- Notes: User asked whether free-address-suggestion autocomplete was possible; compared Photon
+  (free, no key, purpose-built for this), Radar.io (free tier but needs an account/key), and the
+  plain browser `autocomplete` HTML attribute (zero-cost but only surfaces the browser's own
+  saved addresses) — see decisions.md for the full reasoning, including why OSM Nominatim was
+  ruled out (its usage policy explicitly disallows autocomplete traffic, and this project's IP
+  already has an unrelated Overpass rate-limit history). This is a UI convenience only:
+  `src/lib/photon.ts` throws a typed `PhotonError` on failure like every other provider client
+  in this codebase, but the route itself catches it and always returns `{suggestions: []}` —
+  selecting a bad/missing suggestion can never affect the actual research result, since the
+  full pipeline still geocodes via the unchanged US Census step once "Research" is pressed.
+  Built as a WAI-ARIA combobox (keyboard-operable, not just mouse), with the dropdown opening
+  upward since the input sits pinned near the bottom of the chat column. 13 new unit tests (117
+  total) covering `photon.ts` and the `/api/autocomplete` route handler — matching this repo's
+  convention of testing pure logic and route handlers but not React components (the combobox
+  UI itself is verified live in the browser below, same as every other chat component in this
+  app); `npm run build`, lint, and `tsc --noEmit` all clean. Live-verified end-to-end in the
+  browser: typed a partial address,
+  confirmed real Photon suggestions render, selected one via arrow-keys+Enter (fills the box,
+  does not submit) and separately via mouse click (same result, no dropdown-closes-before-click
+  race), then submitted normally and watched the full Ticket 9 streaming flow complete
+  correctly on the selected address — no console errors either time.
+- Also noted, unrelated to this ticket: `src/lib/overpass.live.test.ts` is an untracked, "not
+  part of the committed test suite" manual script left over in the working tree (along with
+  uncommitted changes to `overpass.ts`/`overpass.test.ts` themselves, predating this session) —
+  it runs under the default `npm run test` glob and fails against the still-ongoing Overpass
+  outage. Left untouched since it isn't this session's work to resolve; flagged for whoever
+  owns that change to either commit, `.gitignore`, or delete.
+
 ## Phase 9 — v2 backlog (unchecked, deferred)
 - [ ] Evaluate ATTOM Data upgrade for mortgage/lender completeness
 - [ ] Public-launch compliance: permissible-purpose gating, consent, rate limiting, audit log

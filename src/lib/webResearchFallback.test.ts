@@ -283,4 +283,47 @@ describe("webResearchFallback", () => {
       expect(result.find((f) => f.field === "squareFootage")).toEqual(fields.find((f) => f.field === "squareFootage"));
     });
   });
+
+  describe("onFieldResolved (Ticket 9 — progressive streaming)", () => {
+    it("reports every field exactly once, matching the final returned array", async () => {
+      mockRoutedBy({
+        mortgagee: () => ({ content: { mortgagee: "Wells Fargo" }, confidenceByField: {} }),
+        ownerNames: () => notFound,
+      });
+      const reported: string[] = [];
+
+      const result = await webResearchFallback("addr", baseFields(), null, {}, (field) => {
+        reported.push(field.field);
+      });
+
+      expect(reported.sort()).toEqual(result.map((f) => f.field).sort());
+    });
+
+    it("reports a RentCast-populated field immediately, without waiting on fields still hitting Parallel.ai", async () => {
+      // hvacType never needs a Parallel.ai call (RentCast already has it);
+      // mortgagee always does. hvacType should still be reported even though
+      // mortgagee's mocked call never resolves in this test.
+      vi.mocked(runParallelTask).mockImplementation(
+        () => new Promise(() => {}), // never resolves — simulates a slow/stuck fallback call
+      );
+      const fields = baseFields({
+        hvacType: field<string>({ field: "hvacType", value: "Central", source: "RentCast", confidence: "high" }),
+      });
+      const reported: string[] = [];
+
+      webResearchFallback("addr", fields, null, {}, (field) => {
+        reported.push(field.field);
+      });
+
+      await vi.waitFor(() => {
+        expect(reported).toContain("hvacType");
+      });
+    });
+
+    it("works with no callback supplied at all", async () => {
+      mockRoutedBy({ mortgagee: () => notFound });
+
+      await expect(webResearchFallback("addr", baseFields(), null)).resolves.toBeDefined();
+    });
+  });
 });

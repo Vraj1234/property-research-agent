@@ -2,9 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { AddressParseError, parseAddressFromMessage } from "@/lib/addressParser";
 import { FollowUpError, answerFollowUp } from "@/lib/followUp";
-import { GeocodingError } from "@/lib/geocode";
-import { researchAddress } from "@/lib/orchestrator";
-import type { ApiErrorBody, ChatResponse, ResearchResult } from "@/lib/types";
+import { geocodeAddress, GeocodingError } from "@/lib/geocode";
+import { researchFields } from "@/lib/orchestrator";
+import type {
+  ApiErrorBody,
+  ChatResponse,
+  FieldResult,
+  GeocodeResult,
+  ResearchResult,
+  ResearchStreamEvent,
+} from "@/lib/types";
+
+/** deepResearch's `core` Parallel tier has been observed taking ~3.5 min for
+ * a single mortgagee lookup (decisions.md 2026-08-26) — the default Vercel
+ * function timeout is nowhere near enough for that. Streaming (below) fixes
+ * the *user-facing* silent wait, but the serverless function itself still
+ * has to stay alive the whole time. */
+export const maxDuration = 300;
 
 const fieldResultSchema = z.object({
   field: z.string(),
@@ -48,6 +62,64 @@ function errorResponse(
   message: string,
 ): NextResponse<ApiErrorBody> {
   return NextResponse.json({ error: { code, message } }, { status });
+}
+
+function sseLine(event: ResearchStreamEvent): Uint8Array {
+  return new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+/**
+ * Streams each field to the client the moment it resolves, instead of
+ * making the browser wait silently for all 9 (Ticket 9 — a request can take
+ * anywhere from 15s to several minutes with deep research on). Geocoding
+ * already succeeded by the time this is called, so every failure from here
+ * on is one the pipeline already treats as an honest "not found" field
+ * rather than a thrown error (PRD.md §8) — except a genuinely unexpected
+ * bug, which gets reported as an "error" event rather than an HTTP status,
+ * since the response has already committed to 200 by the time streaming
+ * starts.
+ */
+function streamResearch(address: string, geocode: GeocodeResult, deepResearch: boolean): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (event: ResearchStreamEvent) => controller.enqueue(sseLine(event));
+      send({ type: "geocode", geocode });
+
+      try {
+        const { fields, notices } = await researchFields(
+          address,
+          geocode,
+          { deepResearch },
+          (field: FieldResult) => send({ type: "field", field }),
+        );
+        const result: ResearchResult = {
+          input: { address, deepResearch },
+          geocode,
+          fields,
+          notices,
+        };
+        send({ type: "done", result });
+      } catch (err) {
+        console.error("[/api/research] Unexpected error while streaming field research:", err);
+        send({
+          type: "error",
+          code: "UPSTREAM_ERROR",
+          message: "Unexpected server error while researching this address.",
+        });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+    },
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -99,11 +171,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Geocoding happens here, still outside the stream, so a miss or an
+  // upstream outage can still surface as a normal HTTP status (unchanged
+  // from Ticket 2) rather than an in-stream error event.
+  let geocode: GeocodeResult;
   try {
-    const result = await researchAddress(address, {
-      deepResearch: parsed.data.deepResearch,
-    });
-    return NextResponse.json<ChatResponse>({ type: "research", result }, { status: 200 });
+    geocode = await geocodeAddress(address);
   } catch (err) {
     if (err instanceof GeocodingError) {
       const status = err.code === "NO_MATCH" ? 422 : 502;
@@ -111,4 +184,6 @@ export async function POST(req: NextRequest) {
     }
     return errorResponse(500, "UPSTREAM_ERROR", "Unexpected server error.");
   }
+
+  return streamResearch(address, geocode, parsed.data.deepResearch ?? false);
 }

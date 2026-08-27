@@ -347,6 +347,13 @@ export interface WebResearchFallbackOptions {
   deepResearch?: boolean;
 }
 
+/** Reports one field's final result the moment its own branch settles,
+ * instead of waiting for all six to finish (Ticket 9). A field RentCast
+ * already had resolves this almost immediately (no Parallel.ai call
+ * needed); a field that goes to Parallel.ai reports only once that call
+ * actually returns — never a provisional/guessed value in between. */
+export type FieldResolvedCallback = (field: FieldResult) => void;
+
 /**
  * The Ticket 4 fallback/enrichment layer: one reusable pass over every
  * RentCast-fed field (PRD.md §5/§6) that fills whatever RentCast left null
@@ -360,8 +367,10 @@ export async function webResearchFallback(
   baseFields: FieldResult[],
   lastSaleDate: string | null,
   options: WebResearchFallbackOptions = {},
+  onFieldResolved?: FieldResolvedCallback,
 ): Promise<FieldResult[]> {
   const mortgageeProcessor: ParallelProcessor = options.deepResearch ? "core" : "base";
+  const notify = onFieldResolved ?? (() => {});
 
   const bedBathField = findField<BedBathCount>(baseFields, "bedBathCount");
   const sqftField = findField<number>(baseFields, "squareFootage");
@@ -371,12 +380,31 @@ export async function webResearchFallback(
   const taxField = findField<number>(baseFields, "propertyTaxAmount");
 
   const [bedBathSqft, yearBuilt, ownerName, mortgagee, hvacType, propertyTaxAmount] = await Promise.all([
-    resolveBedBathSqft(address, bedBathField, sqftField, lastSaleDate),
-    fillYearBuilt(address, yearBuiltField),
-    fillOwnerName(address, ownerField),
-    fillMortgagee(address, mortgageeProcessor),
-    fillHvacType(address, hvacField),
-    fillPropertyTaxAmount(address, taxField),
+    resolveBedBathSqft(address, bedBathField, sqftField, lastSaleDate).then((resolved) => {
+      notify(resolved.bedBathField);
+      notify(resolved.sqftField);
+      return resolved;
+    }),
+    fillYearBuilt(address, yearBuiltField).then((field) => {
+      notify(field);
+      return field;
+    }),
+    fillOwnerName(address, ownerField).then((field) => {
+      notify(field);
+      return field;
+    }),
+    fillMortgagee(address, mortgageeProcessor).then((field) => {
+      notify(field);
+      return field;
+    }),
+    fillHvacType(address, hvacField).then((field) => {
+      notify(field);
+      return field;
+    }),
+    fillPropertyTaxAmount(address, taxField).then((field) => {
+      notify(field);
+      return field;
+    }),
   ]);
 
   return [
