@@ -79,6 +79,20 @@ export interface ResearchResult {
  */
 export type ChatResponse = { type: "answer"; answer: string };
 
+/**
+ * GET /api/autocomplete's response shape (Ticket 10) — address suggestions
+ * for the chat input as the user types. This is a UI convenience only, not
+ * part of the research pipeline: picking a suggestion just fills the
+ * message box, and the real geocode still runs through the existing
+ * US Census pipeline unchanged once the user hits Research. Always 200,
+ * `suggestions: []` for both "too short to search" and "upstream lookup
+ * failed" — autocomplete not working should never block typing or
+ * submitting a full address manually.
+ */
+export interface AutocompleteResponse {
+  suggestions: Array<{ id: string; label: string }>;
+}
+
 export type ApiErrorCode = "INVALID_INPUT" | "NO_MATCH" | "NO_ADDRESS_FOUND" | "UPSTREAM_ERROR";
 
 export interface ApiErrorBody {

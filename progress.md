@@ -194,3 +194,44 @@ Living tracker. Update checkboxes and Notes as work happens. See `PRD.md` for fu
   found" quickly, which usefully also proved fast-failing and slow-resolving fields interleave
   correctly in the UI.
 
+## Ticket 10 — Address autocomplete ✅ CLOSED 2026-08-27
+- [x] `GET /api/autocomplete?q=` — free, no-API-key US address suggestions via Photon
+- [x] Message input shows a live dropdown of suggestions as the user types, selectable by
+      keyboard (arrow keys + Enter) or mouse, without submitting the form
+- [x] A too-short query or an upstream Photon failure both degrade to no suggestions rather
+      than an error — autocomplete never blocks typing or submitting a full address by hand
+- Notes: User asked whether free-address-suggestion autocomplete was possible; compared Photon
+  (free, no key, purpose-built for this), Radar.io (free tier but needs an account/key), and the
+  plain browser `autocomplete` HTML attribute (zero-cost but only surfaces the browser's own
+  saved addresses) — see decisions.md for the full reasoning, including why OSM Nominatim was
+  ruled out (its usage policy explicitly disallows autocomplete traffic, and this project's IP
+  already has an unrelated Overpass rate-limit history). This is a UI convenience only:
+  `src/lib/photon.ts` throws a typed `PhotonError` on failure like every other provider client
+  in this codebase, but the route itself catches it and always returns `{suggestions: []}` —
+  selecting a bad/missing suggestion can never affect the actual research result, since the
+  full pipeline still geocodes via the unchanged US Census step once "Research" is pressed.
+  Built as a WAI-ARIA combobox (keyboard-operable, not just mouse), with the dropdown opening
+  upward since the input sits pinned near the bottom of the chat column. 13 new unit tests (117
+  total) covering `photon.ts` and the `/api/autocomplete` route handler — matching this repo's
+  convention of testing pure logic and route handlers but not React components (the combobox
+  UI itself is verified live in the browser below, same as every other chat component in this
+  app); `npm run build`, lint, and `tsc --noEmit` all clean. Live-verified end-to-end in the
+  browser: typed a partial address,
+  confirmed real Photon suggestions render, selected one via arrow-keys+Enter (fills the box,
+  does not submit) and separately via mouse click (same result, no dropdown-closes-before-click
+  race), then submitted normally and watched the full Ticket 9 streaming flow complete
+  correctly on the selected address — no console errors either time.
+- Also noted, unrelated to this ticket: `src/lib/overpass.live.test.ts` is an untracked, "not
+  part of the committed test suite" manual script left over in the working tree (along with
+  uncommitted changes to `overpass.ts`/`overpass.test.ts` themselves, predating this session) —
+  it runs under the default `npm run test` glob and fails against the still-ongoing Overpass
+  outage. Left untouched since it isn't this session's work to resolve; flagged for whoever
+  owns that change to either commit, `.gitignore`, or delete.
+
+## Phase 9 — v2 backlog (unchecked, deferred)
+- [ ] Evaluate ATTOM Data upgrade for mortgage/lender completeness
+- [ ] Public-launch compliance: permissible-purpose gating, consent, rate limiting, audit log
+- [ ] Auth / multi-user accounts
+- [ ] Caching layer for repeat lookups
+- [ ] Multi-address / portfolio view
+- Notes:

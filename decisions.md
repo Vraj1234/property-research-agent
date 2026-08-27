@@ -356,3 +356,43 @@ field which fails fast (Overpass, this network) and fields that take tens of sec
 (Parallel.ai) interleave correctly in the stream — the UI showed the two distance rows resolving
 to "Not found" almost immediately while bed/bath/sqft/owner/tax were still pending, exactly as
 designed, with no visual glitch from the mixed timing.
+
+**2026-08-27 — Ticket 10: address autocomplete-as-you-type via Photon (komoot's free, no-API-key public geocoder), not the US Census Geocoder, Radar.io, or a Google/Mapbox paid API.**
+User asked whether free address-suggestion autocomplete was possible. Ruled out the US Census
+Geocoder this app already uses — it only resolves a *complete* address (confirmed against
+`geocode.ts`), it has no partial-match/typeahead mode. Ruled out reusing OSM Nominatim (the
+"obvious" other free OSM option) since its usage policy explicitly disallows search-as-you-type
+autocomplete traffic, and this project's own IP already has a documented Overpass rate-limit
+history (Tickets 5/7/8) — deliberately not repeating that mistake against a sibling OSM service.
+Photon is a different host, purpose-built for exactly this use case, free, and needs no signup or
+key — the same "free/no-key first" bar every other provider in this project was held to (PRD.md
+§5). Presented Radar.io (free tier, needs an API key + account) and the plain browser-native
+`autocomplete` HTML attribute (zero backend work, but only ever surfaces the browser's own saved
+addresses, not a live nationwide lookup) as the alternatives; user deferred to this
+recommendation. This is a UI convenience only — selecting a suggestion just fills the message
+box, the real geocode still runs through the unchanged Census pipeline once "Research" is
+pressed, so a Photon outage or a bad suggestion can never produce a wrong research result.
+
+**2026-08-27 — Photon failures (and a too-short query) degrade to an empty suggestion list at HTTP 200, never an error surfaced to the user.**
+Unlike the 9 property fields (PRD.md §8: never silently omit a real data gap), a missing
+autocomplete suggestion isn't a data-accuracy question — it's a convenience that either helps or
+doesn't. `photon.ts` throws a typed `PhotonError` on a genuine failure, matching every other
+provider client in this codebase (`rentcast.ts`, `overpass.ts`), but `/api/autocomplete` itself
+catches it and always returns `{suggestions: []}` — the one deliberate exception to this
+project's "throw a typed error, let the caller decide" pattern being applied at the outermost
+layer instead of the field-result layer, because there is no "field" here to attach an honest
+null-with-a-note to; the textarea just behaves like a plain text box.
+
+**2026-08-27 — Address suggestions dropdown opens upward (above the textarea), not downward, and is built as a WAI-ARIA combobox rather than a plain absolutely-positioned list.**
+The message input sits pinned near the bottom of a `100dvh` chat column (`chat-interface.css`) —
+opening downward risked the list clipping against the viewport edge or the container's own
+`overflow: hidden`. Implemented `role="combobox"` on the textarea with `aria-expanded`,
+`aria-controls`, `aria-activedescendant`, and `role="listbox"`/`role="option"` on the list per the
+WAI-ARIA APG combobox pattern, so arrow keys/Enter/Escape work for someone who can't use a mouse,
+not just click-to-select. Selecting a suggestion uses the list item's `onMouseDown` with
+`preventDefault()` rather than `onClick` — `onMouseDown` fires before the textarea's own `blur`,
+so intercepting there (and keeping focus in the textarea) avoids the dropdown closing itself
+before the click can ever register, a real interaction bug live-verified against in the browser
+before it was called done. Live-tested both the keyboard path (type → arrow down → Enter fills
+the box without submitting the form → a second Enter submits normally) and the mouse path
+(type → click a suggestion) end-to-end.

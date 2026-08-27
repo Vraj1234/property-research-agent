@@ -544,8 +544,16 @@
   align-items: flex-end;
 }
 
-.message-input textarea {
+/* Address autocomplete (Ticket 10) — the suggestion list is positioned
+ * relative to this wrapper, not the textarea itself, so it isn't clipped by
+ * the textarea's own box. */
+.address-combobox {
+  position: relative;
   flex: 1;
+}
+
+.message-input textarea {
+  width: 100%;
   resize: none;
   border: 1px solid var(--color-paper-line);
   border-radius: var(--radius-md);
@@ -561,6 +569,36 @@
 .message-input textarea:focus-visible {
   outline: 2px solid var(--color-rust);
   outline-offset: 1px;
+}
+
+.address-combobox__list {
+  position: absolute;
+  bottom: calc(100% + var(--space-2));
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  background: var(--color-paper-raised);
+  border: 1px solid var(--color-paper-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+  max-height: 14rem;
+  overflow-y: auto;
+  z-index: 10;
+}
+
+.address-combobox__option {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.address-combobox__option[data-active="true"] {
+  background: var(--color-ledger-tint);
+  color: var(--color-ledger-strong);
 }
 
 .message-input button {
